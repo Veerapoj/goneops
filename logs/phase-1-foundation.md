@@ -28,3 +28,7 @@
 - Re-ran frontend runtime validation on `FRONTEND_PORT=3100`; dashboard HTML contained expected GoneOps content.
 - Re-ran tracked-file secret scan for common token and private-key patterns; no obvious secrets were found.
 - Checked container tooling; `docker`, `docker-compose`, `podman`, and `nerdctl` are not installed, so Docker Compose runtime validation remains an environment blocker rather than an application failure.
+- Installed system Docker after user approval and disabled the earlier rootless/local Docker attempt so `/usr/bin/docker` is used.
+- Docker rootless attempt failed with `rootlesskit` / `operation not permitted`, so the durable path is system Docker managed by systemd.
+- Verified Docker server `29.5.2` and Docker Compose `v5.1.4`.
+- Ran Docker Compose runtime validation: `postgres`, `redis`, and `rabbitmq` containers started and reached `healthy` status.

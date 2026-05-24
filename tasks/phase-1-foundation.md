@@ -32,4 +32,4 @@
 - [x] Backend startup logging validates
 - [x] Frontend startup validates
 - [x] Docker Compose YAML validates
-- [ ] Docker Compose runtime validates — blocked in this host because Docker CLI/daemon is not installed
+- [x] Docker Compose runtime validates

@@ -12,7 +12,7 @@ Date: 2026-05-24 / refreshed 2026-05-25
 
 ## QA Status
 
-Dependency installation completed. Build, test, lint, backend runtime health, frontend HTTP startup, secret scan, and Docker Compose YAML validation passed. Docker Compose container runtime validation remains blocked on this host because no Docker-compatible CLI/daemon is installed. npm previously reported a moderate advisory in Next.js' pinned internal PostCSS dependency; high-severity audit gate passed during the initial Phase 1 QA run.
+Dependency installation completed. Build, test, lint, backend runtime health, frontend HTTP startup, secret scan, Docker Compose YAML validation, and Docker Compose runtime validation passed. npm previously reported a moderate advisory in Next.js' pinned internal PostCSS dependency; high-severity audit gate passed during the initial Phase 1 QA run.
 
 ## QA Results
 
@@ -31,8 +31,17 @@ Dependency installation completed. Build, test, lint, backend runtime health, fr
 - Backend runtime startup passed on `BACKEND_PORT=4100`; `GET /health` returned `status: ok` and `service: goneops-api`.
 - Frontend runtime startup passed on `FRONTEND_PORT=3100`; dashboard response contained `GoneOps`.
 - Tracked-file secret scan found no obvious API keys, GitHub tokens, OpenAI keys, or private key blocks.
-- Docker Compose runtime check could not be executed because `docker`, `docker-compose`, `podman`, and `nerdctl` are unavailable on this host.
+- Docker Compose runtime check could not be executed because `docker`, `docker-compose`, `podman`, and `nerdctl` were unavailable on this host at the time.
+
+## Docker Runtime QA — 2026-05-25
+
+- Installed system Docker Engine and Docker Compose plugin on Ubuntu 26.04 LTS.
+- Verified Docker server `29.5.2` and Docker Compose `v5.1.4`.
+- Ran `docker compose config --quiet` successfully.
+- Ran `docker compose up -d` successfully.
+- Verified `goneops-postgres`, `goneops-redis`, and `goneops-rabbitmq` all reached Docker health status `healthy`.
+- Note: the active gateway session still requires `sg docker -c '...'` until the process is restarted or a fresh login picks up the new `docker` group membership.
 
 ## Next
 
-Phase 1 foundation is ready to push. Run Docker Compose runtime validation on a host with Docker installed before using the local database/cache/queue stack.
+Phase 1 foundation is complete and pushed. Continue with the next smallest phase task when requested.

@@ -31,6 +31,14 @@ npm run lint
 docker compose up -d
 ```
 
+If Docker is missing on Ubuntu, install the system Docker Engine and Compose plugin:
+
+```bash
+./scripts/install-system-docker.sh
+```
+
+After installation, log out/in or run `newgrp docker` so non-root shells can use the Docker socket.
+
 Frontend: `http://localhost:3000`
 
 Backend: `http://localhost:4000`
