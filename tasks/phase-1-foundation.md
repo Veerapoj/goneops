@@ -31,4 +31,5 @@
 - [x] Backend health endpoint validates
 - [x] Backend startup logging validates
 - [x] Frontend startup validates
-- [ ] Docker Compose runtime validates
+- [x] Docker Compose YAML validates
+- [ ] Docker Compose runtime validates — blocked in this host because Docker CLI/daemon is not installed
