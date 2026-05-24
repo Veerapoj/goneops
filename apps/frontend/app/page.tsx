@@ -3,8 +3,21 @@ const navItems = ["Dashboard", "Projects", "Templates", "Observability", "Settin
 const statusItems = [
   { label: "Frontend", value: "Ready" },
   { label: "Backend", value: "Ready" },
-  { label: "Memory", value: "Persisted" },
+  { label: "Generator", value: "Phase 2" },
   { label: "Local Services", value: "Compose" }
+];
+
+const stacks = ["next-nest", "api-worker", "static-site"];
+const templates = ["saas-dashboard", "internal-tool", "service-api"];
+const architecturePresets = ["local-first", "api-first", "event-driven"];
+
+const generatedStructure = [
+  "my-service/README.md",
+  "my-service/docker-compose.yml",
+  "my-service/.env.example",
+  "my-service/apps/web/src/main.ts",
+  "my-service/apps/api/src/main.ts",
+  "my-service/docs/architecture.md"
 ];
 
 export default function Home() {
@@ -26,7 +39,7 @@ export default function Home() {
               <a
                 key={item}
                 className={`whitespace-nowrap rounded px-3 py-2 text-sm ${
-                  index === 0
+                  index <= 1
                     ? "bg-foreground text-white"
                     : "text-muted hover:bg-background hover:text-foreground"
                 }`}
@@ -41,13 +54,13 @@ export default function Home() {
         <section className="px-5 py-6 md:px-8 lg:px-10">
           <header className="flex flex-col gap-4 border-b border-border pb-6 md:flex-row md:items-center md:justify-between">
             <div>
-              <h1 className="text-3xl font-semibold tracking-normal">Developer Platform</h1>
+              <h1 className="text-3xl font-semibold tracking-normal">Project Generator</h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
-                Create standardized projects, preserve engineering context, and keep local infrastructure visible from one workspace.
+                Create standardized local-first projects with an allowlisted stack, template, and architecture preset.
               </p>
             </div>
             <button className="h-10 rounded bg-accent px-4 text-sm font-semibold text-white">
-              Create Project
+              Generate Project
             </button>
           </header>
 
@@ -60,26 +73,60 @@ export default function Home() {
             ))}
           </div>
 
-          <div className="mt-6 grid gap-4 lg:grid-cols-[1.4fr_1fr]">
+          <div className="mt-6 grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
             <section className="rounded border border-border bg-panel p-5">
-              <h2 className="text-lg font-semibold">Phase 1 Foundation</h2>
-              <div className="mt-4 divide-y divide-border">
-                {["Repository initialized", "Frontend shell", "Backend foundation", "Persistent memory", "Task tracking"].map(
-                  (task) => (
-                    <div key={task} className="flex items-center justify-between py-3 text-sm">
-                      <span>{task}</span>
-                      <span className="rounded bg-background px-2 py-1 text-xs text-accent">Ready</span>
-                    </div>
-                  )
-                )}
-              </div>
+              <h2 className="text-lg font-semibold">Create Project UI</h2>
+              <form className="mt-4 grid gap-4" aria-label="Create Project Wizard">
+                <label className="grid gap-2 text-sm">
+                  Project name
+                  <input
+                    className="rounded border border-border bg-background px-3 py-2 text-foreground"
+                    defaultValue="My Service"
+                    name="projectName"
+                  />
+                </label>
+
+                <label className="grid gap-2 text-sm">
+                  Stack selection
+                  <select className="rounded border border-border bg-background px-3 py-2 text-foreground" name="stack">
+                    {stacks.map((stack) => (
+                      <option key={stack}>{stack}</option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="grid gap-2 text-sm">
+                  Template selection
+                  <select className="rounded border border-border bg-background px-3 py-2 text-foreground" name="template">
+                    {templates.map((template) => (
+                      <option key={template}>{template}</option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="grid gap-2 text-sm">
+                  Architecture preset
+                  <select className="rounded border border-border bg-background px-3 py-2 text-foreground" name="architecturePreset">
+                    {architecturePresets.map((preset) => (
+                      <option key={preset}>{preset}</option>
+                    ))}
+                  </select>
+                </label>
+              </form>
             </section>
 
             <section className="rounded border border-border bg-panel p-5">
-              <h2 className="text-lg font-semibold">Next Workflow</h2>
+              <h2 className="text-lg font-semibold">Generated Structure Preview</h2>
               <p className="mt-3 text-sm leading-6 text-muted">
-                Project generation opens after the foundation QA gate passes. Non-MVP areas remain simple placeholders until their phase begins.
+                Backend endpoint <code>POST /projects/generate</code> validates inputs and returns generated files without writing secrets.
               </p>
+              <ul className="mt-4 space-y-2 text-sm">
+                {generatedStructure.map((path) => (
+                  <li key={path} className="rounded bg-background px-3 py-2 font-mono text-xs">
+                    {path}
+                  </li>
+                ))}
+              </ul>
             </section>
           </div>
         </section>

@@ -2,17 +2,19 @@
 
 GoneOps is a local-first Internal Developer Platform for creating standardized projects without waiting on infrastructure or DevOps teams.
 
-## Phase 1 Scope
+## Current Scope
 
-This repository currently contains the MVP foundation:
+This repository currently contains the MVP foundation and Phase 2 project generator:
 
 - Next.js frontend shell
 - NestJS backend foundation
 - Docker Compose for PostgreSQL, Redis, and RabbitMQ
 - Persistent engineering memory directories
-- Phase 1 task and progress records
+- Phase task, progress, log, and context records
+- Project Generator UI with project name, stack, template, and architecture preset selections
+- Backend Project Generator API that returns validated generated structure and files
 
-Project generation, architecture diagrams, CI/CD generation, and advanced observability are planned for later phases.
+Architecture diagrams, CI/CD generation, and advanced observability are planned for later phases.
 
 ## Requirements
 
@@ -52,6 +54,23 @@ Run the Phase 1 gate:
 ```bash
 npm run qa:phase1
 ```
+
+Run the Phase 2 gate:
+
+```bash
+npm run qa:phase2
+```
+
+## Project Generator API
+
+```bash
+curl -fsS http://localhost:4000/projects/options
+curl -fsS -X POST http://localhost:4000/projects/generate \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"Customer Portal","stack":"next-nest","template":"saas-dashboard","architecturePreset":"local-first"}'
+```
+
+Generated output uses relative paths and safe placeholder values only; local secrets must stay in `.env`.
 
 ## Repository Hygiene
 
