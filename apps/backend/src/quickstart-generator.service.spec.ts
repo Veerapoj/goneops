@@ -56,6 +56,17 @@ test("go fiber postgres redis rabbitmq example includes demo workflow and creden
   assert.ok(readme.includes("user=appuser password=apppassword"));
 });
 
+test("quickstart lists projects and deletes only after exact name confirmation", () => {
+  const scopedService = new QuickStartGeneratorService();
+  const output = scopedService.generate({ name: "Delete Me", frontend: "Static HTML", backend: "ExpressJS", database: "None", infrastructure: [] });
+  assert.ok(scopedService.listProjects().some((project) => project.slug === "delete-me"));
+  assert.throws(() => scopedService.deleteProject(output.project.slug, { confirmationName: "wrong" }), /Confirmation name must match project name/);
+  assert.ok(scopedService.getProject(output.project.slug));
+  assert.deepEqual(scopedService.deleteProject(output.project.slug, { confirmationName: "Delete Me" }), { deleted: true, slug: "delete-me" });
+  assert.equal(scopedService.getProject(output.project.slug), undefined);
+  assert.ok(!scopedService.listProjects().some((project) => project.slug === "delete-me"));
+});
+
 test("quickstart rejects unsupported components", () => {
   assert.throws(() => service.generate({ name: "Bad", backend: "Rails" as never }), /Unsupported QuickStart backend/);
   assert.throws(() => service.generate({ name: "Bad", database: "Oracle" as never }), /Unsupported QuickStart database/);

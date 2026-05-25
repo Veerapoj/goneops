@@ -31,4 +31,16 @@ test("QuickStart generates a real project and opens README project page", async 
   await expect(page.getByText("Selected file")).toBeVisible();
   await expect(page.getByText("name: quickstart-ci")).toBeVisible();
   await expect(page.getByText("actions/checkout@v4")).toBeVisible();
+
+  await page.goto("/quickstart");
+  await expect(page.getByText("Created Projects")).toBeVisible();
+  await page.getByRole("button", { name: /goneops-demo.*files/ }).click();
+  await expect(page.getByRole("button", { name: "Delete selected project" })).toBeDisabled();
+  await page.getByLabel("Confirm project name").fill("goneops-demo");
+  await page.getByRole("button", { name: "Delete selected project" }).click();
+  await expect(page.getByText("Deleted goneops-demo")).toBeVisible();
+  await expect(page.getByRole("button", { name: /goneops-demo.*files/ })).toHaveCount(0);
+  expect(await page.evaluate(() => localStorage.getItem("quickstart:goneops-demo"))).toBeNull();
+  const deletedProject = await page.request.get("http://127.0.0.1:4100/quickstart/projects/goneops-demo");
+  expect(deletedProject.status()).toBe(404);
 });

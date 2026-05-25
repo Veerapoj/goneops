@@ -64,7 +64,7 @@ test("quickstart exposes selectable create project fields", () => {
   }
 });
 
-test("quickstart result panel shows generated project link, logs, and API request target", () => {
+test("quickstart result panel shows generated project link, logs, API target, and deletion controls", () => {
   for (const label of [
     "Manual Result",
     "POST {apiBase}/quickstart/generate",
@@ -72,7 +72,14 @@ test("quickstart result panel shows generated project link, logs, and API reques
     "README preview after generation",
     "Open generated project:",
     "result.stackSummary",
-    "result.generationLogs.map"
+    "result.generationLogs.map",
+    "Created Projects",
+    "Delete project",
+    "Confirm project name",
+    "Delete selected project",
+    "fetch(`${apiBase}/quickstart/projects`)",
+    "method: \"DELETE\"",
+    "localStorage.removeItem(`quickstart:${selectedProject.slug}`)"
   ]) {
     assert.ok(quickstart.includes(label));
   }

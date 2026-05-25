@@ -1,11 +1,13 @@
 import {
   GenerateQuickStartRequest,
+  DeleteQuickStartProjectRequest,
   GenerateQuickStartResponse,
   QuickStartBackend,
   QuickStartDatabase,
   QuickStartFrontend,
   QuickStartGeneratedFile,
-  QuickStartInfrastructure
+  QuickStartInfrastructure,
+  QuickStartProjectSummary
 } from "./quickstart-generator.types";
 
 const FRONTENDS: QuickStartFrontend[] = ["NextJS", "React", "Vue", "Static HTML"];
@@ -28,6 +30,20 @@ export class QuickStartGeneratorService {
 
   getProject(slug: string): GenerateQuickStartResponse | undefined {
     return this.generatedProjects.get(slug);
+  }
+
+  listProjects(): QuickStartProjectSummary[] {
+    return Array.from(this.generatedProjects.values()).map((project) => this.toProjectSummary(project));
+  }
+
+  deleteProject(slug: string, request: DeleteQuickStartProjectRequest): { deleted: true; slug: string } | undefined {
+    const project = this.generatedProjects.get(slug);
+    if (!project) return undefined;
+    if (request.confirmationName !== project.project.name) {
+      throw new Error(`Confirmation name must match project name: ${project.project.name}`);
+    }
+    this.generatedProjects.delete(slug);
+    return { deleted: true, slug };
   }
 
   getOptions() {
@@ -93,7 +109,7 @@ export class QuickStartGeneratorService {
     const response: GenerateQuickStartResponse = {
       edition: "GoneOps QuickStart Edition",
       goal: "One Click Project Bootstrap",
-      project: { name, slug, stack: request.stack ?? selection.backend, url: `/quickstart/projects/${slug}`, selection },
+      project: { name, slug, stack: request.stack ?? selection.backend, url: `/quickstart/projects/${slug}`, generatedAt: new Date().toISOString(), selection },
       stackSummary: `${selection.frontend} + ${selection.backend} + ${selection.database} + ${selection.infrastructure.length ? selection.infrastructure.join(" + ") : "No cache/queue"}`,
       generatedServices: this.generatedServices(selection),
       ports,
@@ -143,6 +159,17 @@ export class QuickStartGeneratorService {
     };
     this.generatedProjects.set(slug, response);
     return response;
+  }
+
+  private toProjectSummary(project: GenerateQuickStartResponse): QuickStartProjectSummary {
+    return {
+      name: project.project.name,
+      slug: project.project.slug,
+      url: project.project.url,
+      stackSummary: project.stackSummary,
+      generatedAt: project.project.generatedAt,
+      fileCount: project.files.length
+    };
   }
 
   private resolveSelection(request: GenerateQuickStartRequest): StackSelection {

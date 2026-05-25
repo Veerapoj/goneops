@@ -23,10 +23,12 @@ export type GenerateQuickStartRequest = {
 };
 
 export type QuickStartGeneratedFile = { path: string; content: string };
+export type QuickStartProjectSummary = { name: string; slug: string; url: string; stackSummary: string; generatedAt: string; fileCount: number };
+export type DeleteQuickStartProjectRequest = { confirmationName?: string };
 export type GenerateQuickStartResponse = {
   edition: "GoneOps QuickStart Edition";
   goal: "One Click Project Bootstrap";
-  project: { name: string; slug: string; stack: QuickStartStack; url: string; selection: { frontend: QuickStartFrontend; backend: QuickStartBackend; database: QuickStartDatabase; infrastructure: QuickStartInfrastructure[] } };
+  project: { name: string; slug: string; stack: QuickStartStack; url: string; generatedAt: string; selection: { frontend: QuickStartFrontend; backend: QuickStartBackend; database: QuickStartDatabase; infrastructure: QuickStartInfrastructure[] } };
   stackSummary: string;
   generatedServices: string[];
   ports: { name: string; internal: string; external: string; url?: string }[];
