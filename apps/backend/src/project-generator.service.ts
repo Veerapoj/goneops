@@ -40,6 +40,10 @@ export class ProjectGeneratorService {
       `${slug}/apps/web/src/main.ts`,
       `${slug}/apps/api/src/main.ts`,
       `${slug}/docs/architecture.md`,
+      `${slug}/docs/context-diagram.md`,
+      `${slug}/docs/system-diagram.md`,
+      `${slug}/docs/deployment-diagram.md`,
+      `${slug}/docs/api-contract.md`,
       `${slug}/tasks/README.md`
     ];
 
@@ -59,6 +63,22 @@ export class ProjectGeneratorService {
       {
         path: `${slug}/docs/architecture.md`,
         content: this.renderArchitecture(name, stack, architecturePreset)
+      },
+      {
+        path: `${slug}/docs/context-diagram.md`,
+        content: this.renderContextDiagram(name, slug, architecturePreset)
+      },
+      {
+        path: `${slug}/docs/system-diagram.md`,
+        content: this.renderSystemDiagram(name, slug, stack)
+      },
+      {
+        path: `${slug}/docs/deployment-diagram.md`,
+        content: this.renderDeploymentDiagram(name, slug, architecturePreset)
+      },
+      {
+        path: `${slug}/docs/api-contract.md`,
+        content: this.renderApiContract(name, slug, stack)
       }
     ];
 
@@ -75,6 +95,8 @@ export class ProjectGeneratorService {
           "stack/template/preset allowlisted",
           "generated paths are relative",
           "required files generated",
+          "mermaid diagrams generated",
+          "api contract generated",
           "secret placeholders only"
         ]
       }
@@ -116,11 +138,40 @@ export class ProjectGeneratorService {
   }
 
   private renderArchitecture(name: string, stack: ProjectStack, architecturePreset: ArchitecturePreset): string {
-    return `# ${name} Architecture\n\nPreset: ${architecturePreset}\n\nStack: ${stack}\n\n## Components\n\n- Web application\n- API service\n- PostgreSQL metadata store\n`;
+    return `# ${name} Architecture\n\nPreset: ${architecturePreset}\n\nStack: ${stack}\n\n## Components\n\n- Web application\n- API service\n- PostgreSQL metadata store\n\n## Generated Design Docs\n\n- [Context diagram](./context-diagram.md)\n- [System diagram](./system-diagram.md)\n- [Deployment diagram](./deployment-diagram.md)\n- [API contract](./api-contract.md)\n`;
+  }
+
+  private renderContextDiagram(name: string, slug: string, architecturePreset: ArchitecturePreset): string {
+    return `# ${name} Context Diagram\n\nArchitecture preset: ${architecturePreset}\n\n\`\`\`mermaid\nflowchart LR\n  Developer[Developer] --> Platform[${name} / ${slug}]\n  Platform --> Browser[Web UI]\n  Platform --> Api[API Service]\n  Api --> Database[(PostgreSQL)]\n  Api --> Observability[Structured Logs and Traces]\n\`\`\`\n`;
+  }
+
+  private renderSystemDiagram(name: string, slug: string, stack: ProjectStack): string {
+    return `# ${name} System Diagram\n\nStack: ${stack}\n\n\`\`\`mermaid\nflowchart TB\n  subgraph ${this.toMermaidId(slug)}[${name}]\n    Web[apps/web] --> Api[apps/api]\n    Api --> Db[(PostgreSQL)]\n    Api --> Queue[(Async Jobs)]\n  end\n  Web --> Health[Health and readiness checks]\n\`\`\`\n`;
+  }
+
+  private renderDeploymentDiagram(name: string, slug: string, architecturePreset: ArchitecturePreset): string {
+    return `# ${name} Deployment Diagram\n\nLocal-first deployment target for ${architecturePreset}.\n\n\`\`\`mermaid\nflowchart TB\n  Host[Developer Workstation] --> Compose[Docker Compose Project: ${slug}]\n  Compose --> Web[Web Container]\n  Compose --> Api[API Container]\n  Compose --> Postgres[(PostgreSQL Volume)]\n  Compose --> Logs[Local Logs]\n\`\`\`\n`;
+  }
+
+  private renderApiContract(name: string, slug: string, stack: ProjectStack): string {
+    return `# ${name} API Contract\n\nGenerated safe starter contract for ${slug} (${stack}).\n\n## Endpoints\n\n| Method | Path | Purpose |\n| --- | --- | --- |\n| GET | /health | Liveness check |\n| GET | /ready | Dependency readiness check |\n| GET | /live | Runtime liveness check |\n\n## Response Envelope\n\n\`\`\`json\n{\n  "status": "ok",\n  "service": "${slug}",\n  "trace_id": "generated-at-runtime"\n}\n\`\`\`\n`;
+  }
+
+  private toMermaidId(value: string): string {
+    return value.replace(/[^A-Za-z0-9]/g, "_");
   }
 
   private validateGeneratedFiles(files: { path: string; content: string }[]) {
-    const required = ["README.md", "docker-compose.yml", ".env.example", "docs/architecture.md"];
+    const required = [
+      "README.md",
+      "docker-compose.yml",
+      ".env.example",
+      "docs/architecture.md",
+      "docs/context-diagram.md",
+      "docs/system-diagram.md",
+      "docs/deployment-diagram.md",
+      "docs/api-contract.md"
+    ];
     for (const suffix of required) {
       if (!files.some((file) => file.path.endsWith(suffix))) {
         throw new BadRequestException(`Generated output missing ${suffix}`);
@@ -132,6 +183,9 @@ export class ProjectGeneratorService {
       }
       if (/(ghp_|sk-|BEGIN (RSA|OPENSSH|PRIVATE) KEY)/.test(file.content)) {
         throw new BadRequestException(`Generated file appears to contain a secret: ${file.path}`);
+      }
+      if (file.path.includes("diagram") && !file.content.includes("```mermaid")) {
+        throw new BadRequestException(`Generated diagram file is missing a Mermaid block: ${file.path}`);
       }
     }
   }

@@ -3,7 +3,7 @@ const navItems = ["Dashboard", "Projects", "Templates", "Observability", "Settin
 const statusItems = [
   { label: "Frontend", value: "Ready" },
   { label: "Backend", value: "Ready" },
-  { label: "Generator", value: "Phase 2" },
+  { label: "Generator", value: "Phase 3" },
   { label: "Local Services", value: "Compose" }
 ];
 
@@ -11,13 +11,24 @@ const stacks = ["next-nest", "api-worker", "static-site"];
 const templates = ["saas-dashboard", "internal-tool", "service-api"];
 const architecturePresets = ["local-first", "api-first", "event-driven"];
 
+
+const mermaidPreview = `flowchart LR
+  Developer[Developer] --> Project[Generated Project]
+  Project --> Web[Web UI]
+  Project --> Api[API Service]
+  Api --> Database[(PostgreSQL)]`;
+
 const generatedStructure = [
   "my-service/README.md",
   "my-service/docker-compose.yml",
   "my-service/.env.example",
   "my-service/apps/web/src/main.ts",
   "my-service/apps/api/src/main.ts",
-  "my-service/docs/architecture.md"
+  "my-service/docs/architecture.md",
+  "my-service/docs/context-diagram.md",
+  "my-service/docs/system-diagram.md",
+  "my-service/docs/deployment-diagram.md",
+  "my-service/docs/api-contract.md"
 ];
 
 export default function Home() {
@@ -127,6 +138,27 @@ export default function Home() {
                   </li>
                 ))}
               </ul>
+            </section>
+
+            <section className="rounded border border-border bg-panel p-5 lg:col-span-2">
+              <h2 className="text-lg font-semibold">Design Generator Preview</h2>
+              <p className="mt-3 text-sm leading-6 text-muted">
+                Phase 3 adds Mermaid generation for context, system, and deployment diagrams plus an API contract document.
+              </p>
+              <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_0.9fr]">
+                <pre className="overflow-x-auto rounded bg-background p-4 text-xs leading-6 text-foreground">
+                  <code>{mermaidPreview}</code>
+                </pre>
+                <div className="rounded border border-border bg-background p-4 text-sm leading-6">
+                  <div className="font-semibold">Generated docs</div>
+                  <ul className="mt-3 list-disc space-y-1 pl-5 text-muted">
+                    <li>Context diagram generation</li>
+                    <li>System diagram generation</li>
+                    <li>Deployment diagram generation</li>
+                    <li>API contract documentation</li>
+                  </ul>
+                </div>
+              </div>
             </section>
           </div>
         </section>
