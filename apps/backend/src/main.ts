@@ -13,7 +13,13 @@ async function bootstrap() {
   const port = Number(process.env.BACKEND_PORT ?? 4000);
 
   app.enableCors({
-    origin: process.env.FRONTEND_ORIGIN ?? "http://localhost:3000"
+    origin: (origin: string | undefined, callback: (error: Error | null, allow?: boolean) => void) => {
+      if (!origin || /^https?:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+)(:\d+)?$/.test(origin)) {
+        callback(null, true);
+        return;
+      }
+      callback(new Error(`CORS origin not allowed: ${origin}`));
+    }
   });
 
   app.use((request: Request, response: Response, next: NextFunction) => {

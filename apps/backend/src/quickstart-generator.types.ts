@@ -1,8 +1,11 @@
 export type QuickStartFrontend = "NextJS" | "React" | "Vue" | "Static HTML";
 export type QuickStartBackend = "Go Fiber" | "NestJS" | "ExpressJS" | "FastAPI";
-export type QuickStartDatabase = "PostgreSQL" | "MySQL" | "MongoDB";
+export type QuickStartDatabase = "PostgreSQL" | "MySQL" | "MongoDB" | "None";
 export type QuickStartInfrastructure = "Redis" | "RabbitMQ" | "MinIO";
-export type QuickStartStack = QuickStartBackend | "node-http" | "node-service" | "node-worker-api";
+export type QuickStartStackChoice = "NestJS" | "NextJS" | "Go Fiber" | "FastAPI";
+export type QuickStartStack = QuickStartBackend | QuickStartStackChoice | "node-http" | "node-service" | "node-worker-api";
+export type QuickStartCache = "Redis" | "None";
+export type QuickStartQueue = "RabbitMQ" | "None";
 
 export type GenerateQuickStartRequest = {
   name?: string;
@@ -10,14 +13,20 @@ export type GenerateQuickStartRequest = {
   frontend?: QuickStartFrontend;
   backend?: QuickStartBackend;
   database?: QuickStartDatabase;
+  cache?: QuickStartCache;
+  queue?: QuickStartQueue;
   infrastructure?: QuickStartInfrastructure[];
+  includeReadme?: boolean;
+  includeDockerCompose?: boolean;
+  includeCi?: boolean;
+  includeHelloWorld?: boolean;
 };
 
 export type QuickStartGeneratedFile = { path: string; content: string };
 export type GenerateQuickStartResponse = {
   edition: "GoneOps QuickStart Edition";
   goal: "One Click Project Bootstrap";
-  project: { name: string; slug: string; stack: QuickStartStack; selection: { frontend: QuickStartFrontend; backend: QuickStartBackend; database: QuickStartDatabase; infrastructure: QuickStartInfrastructure[] } };
+  project: { name: string; slug: string; stack: QuickStartStack; url: string; selection: { frontend: QuickStartFrontend; backend: QuickStartBackend; database: QuickStartDatabase; infrastructure: QuickStartInfrastructure[] } };
   stackSummary: string;
   generatedServices: string[];
   ports: { name: string; internal: string; external: string; url?: string }[];
@@ -30,5 +39,6 @@ export type GenerateQuickStartResponse = {
   containerStatus: { service: string; status: string; health: string }[];
   flow: ["select stack", "click generate", "run local project"];
   files: QuickStartGeneratedFile[];
+  readme: string;
   validation: { valid: true; checks: string[] };
 };

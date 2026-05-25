@@ -10,7 +10,7 @@ import {
 
 const FRONTENDS: QuickStartFrontend[] = ["NextJS", "React", "Vue", "Static HTML"];
 const BACKENDS: QuickStartBackend[] = ["Go Fiber", "NestJS", "ExpressJS", "FastAPI"];
-const DATABASES: QuickStartDatabase[] = ["PostgreSQL", "MySQL", "MongoDB"];
+const DATABASES: QuickStartDatabase[] = ["PostgreSQL", "MySQL", "MongoDB", "None"];
 const INFRASTRUCTURE: QuickStartInfrastructure[] = ["Redis", "RabbitMQ", "MinIO"];
 const LEGACY_STACK_OPTIONS = ["node-http", "node-service", "node-worker-api"] as const;
 
@@ -24,6 +24,12 @@ type StackSelection = {
 type ServicePort = { name: string; internal: string; external: string; url?: string };
 
 export class QuickStartGeneratorService {
+  private readonly generatedProjects = new Map<string, GenerateQuickStartResponse>();
+
+  getProject(slug: string): GenerateQuickStartResponse | undefined {
+    return this.generatedProjects.get(slug);
+  }
+
   getOptions() {
     return {
       edition: "GoneOps QuickStart Edition",
@@ -32,6 +38,8 @@ export class QuickStartGeneratorService {
         frontend: FRONTENDS,
         backend: BACKENDS,
         database: DATABASES,
+        cache: ["Redis", "None"] as const,
+        queue: ["RabbitMQ", "None"] as const,
         infrastructure: INFRASTRUCTURE
       },
       stacks: [
@@ -56,15 +64,20 @@ export class QuickStartGeneratorService {
     const selection = this.resolveSelection(request);
     const ports = this.servicePorts(selection);
     const files: QuickStartGeneratedFile[] = [];
+    const includeReadme = request.includeReadme ?? true;
+    const includeDockerCompose = request.includeDockerCompose ?? true;
+    const includeCi = request.includeCi ?? true;
+    const includeHelloWorld = request.includeHelloWorld ?? true;
 
-    files.push({ path: `${slug}/README.md`, content: this.renderReadme(name, slug, selection, ports) });
+    if (includeReadme) files.push({ path: `${slug}/README.md`, content: this.renderReadme(name, slug, selection, ports) });
     files.push({ path: `${slug}/.env.example`, content: this.renderEnvExample(selection) });
     files.push({ path: `${slug}/.gitignore`, content: this.renderGitignore() });
     files.push({ path: `${slug}/Makefile`, content: this.renderMakefile() });
-    files.push({ path: `${slug}/docker-compose.yml`, content: this.renderDockerCompose(selection) });
+    if (includeDockerCompose) files.push({ path: `${slug}/docker-compose.yml`, content: this.renderDockerCompose(selection) });
+    if (includeCi) files.push({ path: `${slug}/.github/workflows/ci.yml`, content: this.renderCiWorkflow() });
     files.push({ path: `${slug}/openapi.yaml`, content: this.renderOpenApi(name) });
     files.push({ path: `${slug}/scripts/healthcheck.sh`, content: this.renderHealthcheckScript() });
-    files.push(...this.renderBackendFiles(selection));
+    files.push(...this.renderBackendFiles(selection, includeHelloWorld));
     files.push(...this.renderFrontendFiles(selection));
     files.push(...this.renderSeedFiles(selection));
 
@@ -74,65 +87,77 @@ export class QuickStartGeneratorService {
       }
     }
 
-    this.validate(files, selection);
+    this.validate(files, selection, { includeReadme, includeDockerCompose, includeCi, includeHelloWorld });
+    const readme = files.find((file) => file.path.endsWith("README.md"))?.content ?? "README generation disabled.";
 
-    return {
+    const response: GenerateQuickStartResponse = {
       edition: "GoneOps QuickStart Edition",
       goal: "One Click Project Bootstrap",
-      project: { name, slug, stack: selection.backend, selection },
-      stackSummary: `${selection.frontend} + ${selection.backend} + ${selection.database} + ${selection.infrastructure.join(" + ")}`,
+      project: { name, slug, stack: request.stack ?? selection.backend, url: `/quickstart/projects/${slug}`, selection },
+      stackSummary: `${selection.frontend} + ${selection.backend} + ${selection.database} + ${selection.infrastructure.length ? selection.infrastructure.join(" + ") : "No cache/queue"}`,
       generatedServices: this.generatedServices(selection),
       ports,
       urls: this.urls(ports),
       credentials: this.credentials(selection),
-      swaggerUrl: "http://localhost:${API_PORT}/swagger",
+      swaggerUrl: "http://localhost:${API_APP_PORT}/swagger",
       apiExamples: [
-        "curl http://localhost:${API_PORT}/health",
-        "curl http://localhost:${API_PORT}/jobs",
-        "curl -X POST http://localhost:${API_PORT}/jobs -H 'content-type: application/json' -d '{\"title\":\"Create Demo Job\"}'"
+        "curl http://localhost:${API_APP_PORT}/hello",
+        "curl http://localhost:${API_APP_PORT}/health",
+        "curl http://localhost:${API_APP_PORT}/jobs",
+        "curl -X POST http://localhost:${API_APP_PORT}/jobs -H 'content-type: application/json' -d '{\"title\":\"Create Demo Job\"}'"
       ],
       dockerCommands: ["cp .env.example .env", "docker compose up --build", "docker compose ps", "docker compose down -v"],
       generationLogs: [
         "[✓] Generate backend",
+        ...(includeHelloWorld ? ["[✓] Generate Hello World"] : []),
         "[✓] Generate Swagger",
-        `[✓] Generate ${selection.database} config`,
-        ...(selection.infrastructure.includes("Redis") ? ["[✓] Generate Redis config"] : []),
-        ...(selection.infrastructure.includes("RabbitMQ") ? ["[✓] Generate RabbitMQ workflow"] : []),
+        ...(selection.database !== "None" ? [`[✓] Generate ${selection.database} config`] : ["[✓] Skip database config"]),
+        ...(selection.infrastructure.includes("Redis") ? ["[✓] Generate Redis config"] : ["[✓] Skip cache config"]),
+        ...(selection.infrastructure.includes("RabbitMQ") ? ["[✓] Generate RabbitMQ workflow"] : ["[✓] Skip queue workflow"]),
         ...(selection.infrastructure.includes("MinIO") ? ["[✓] Generate MinIO config"] : []),
-        "[✓] Generate Docker Compose",
-        "[✓] Build containers",
-        "[✓] Run health checks",
+        ...(includeDockerCompose ? ["[✓] Generate Docker Compose"] : []),
+        ...(includeCi ? ["[✓] Generate CI/CD"] : []),
         "[✓] Validate API",
         "[✓] Validate Swagger"
       ],
       containerStatus: this.generatedServices(selection).map((service) => ({ service, status: "generated", health: "validated by docker compose health checks" })),
       flow: ["select stack", "click generate", "run local project"],
       files,
+      readme,
       validation: {
         valid: true,
         checks: [
           "backend source generated",
           "frontend source generated",
+          "Hello World endpoint generated",
           "Swagger/OpenAPI generated",
-          `${selection.database} connection code generated`,
-          "seeded demo data generated",
-          "health check endpoint generated",
-          "jobs API generated",
-          "Docker Compose generated with automatic container networking",
+          selection.database !== "None" ? `${selection.database} connection code generated` : "database disabled by selection",
+          selection.infrastructure.includes("Redis") ? "Redis cache wiring generated" : "cache disabled by selection",
+          selection.infrastructure.includes("RabbitMQ") ? "RabbitMQ queue wiring generated" : "queue disabled by selection",
+          includeDockerCompose ? "Docker Compose generated with automatic container networking" : "Docker Compose disabled by selection",
+          includeCi ? "CI/CD workflow generated" : "CI/CD disabled by selection",
           "ports resolved from .env",
           "README generated with credentials and commands"
         ]
       }
     };
+    this.generatedProjects.set(slug, response);
+    return response;
   }
 
   private resolveSelection(request: GenerateQuickStartRequest): StackSelection {
-    const legacyBackend = request.stack && ["node-http", "node-service", "node-worker-api"].includes(String(request.stack)) ? "ExpressJS" : request.stack;
+    const requestedStack = request.stack;
+    const legacyBackend = requestedStack && ["node-http", "node-service", "node-worker-api"].includes(String(requestedStack)) ? "ExpressJS" : requestedStack;
+    const stackBackend = requestedStack === "NextJS" ? "ExpressJS" : legacyBackend;
+    const frontend = request.frontend ?? (requestedStack === "NextJS" ? "NextJS" : "Static HTML");
+    const infrastructure = request.infrastructure?.length ? [...request.infrastructure] : [];
+    if ((request.cache ?? "Redis") === "Redis" && !infrastructure.includes("Redis")) infrastructure.push("Redis");
+    if ((request.queue ?? "RabbitMQ") === "RabbitMQ" && !infrastructure.includes("RabbitMQ")) infrastructure.push("RabbitMQ");
     const selection = {
-      frontend: request.frontend ?? "Static HTML",
-      backend: (request.backend ?? legacyBackend ?? "Go Fiber") as QuickStartBackend,
+      frontend,
+      backend: (request.backend ?? stackBackend ?? "Go Fiber") as QuickStartBackend,
       database: request.database ?? "PostgreSQL",
-      infrastructure: (request.infrastructure?.length ? request.infrastructure : ["Redis", "RabbitMQ"]) as QuickStartInfrastructure[]
+      infrastructure
     };
     if (!FRONTENDS.includes(selection.frontend)) throw new Error(`Unsupported QuickStart frontend: ${selection.frontend}`);
     if (!BACKENDS.includes(selection.backend)) throw new Error(`Unsupported QuickStart backend: ${selection.backend}`);
@@ -173,11 +198,11 @@ export class QuickStartGeneratorService {
   }
 
   private generatedServices(selection: StackSelection) {
-    return ["frontend", "api", this.databaseService(selection.database), ...selection.infrastructure.map((item) => item.toLowerCase())];
+    return ["frontend", "api", ...(selection.database === "None" ? [] : [this.databaseService(selection.database)]), ...selection.infrastructure.map((item) => item.toLowerCase())];
   }
 
   private databaseService(database: QuickStartDatabase) {
-    return { PostgreSQL: "postgres", MySQL: "mysql", MongoDB: "mongo" }[database];
+    return { PostgreSQL: "postgres", MySQL: "mysql", MongoDB: "mongo", None: "" }[database];
   }
 
   private credentials(selection: StackSelection) {
@@ -222,20 +247,21 @@ export class QuickStartGeneratorService {
 
   private renderGitignore() { return ["node_modules/", ".env", ".DS_Store", "dist/", "__pycache__/", "target/", "*.log", ""].join("\n"); }
   private renderMakefile() { return [".PHONY: up down ps logs health", "up:", "\tcp .env.example .env 2>/dev/null || true", "\tdocker compose up --build", "down:", "\tdocker compose down -v", "ps:", "\tdocker compose ps", "logs:", "\tdocker compose logs -f", "health:", "\tcurl http://localhost:$${API_APP_PORT}/health", ""].join("\n"); }
+  private renderCiWorkflow() { return ["name: quickstart-ci", "on:", "  push:", "    branches: [main]", "  pull_request:", "jobs:", "  validate:", "    runs-on: ubuntu-latest", "    steps:", "      - uses: actions/checkout@v4", "      - name: Validate Docker Compose", "        run: docker compose config --quiet", ""].join("\n"); }
   private renderHealthcheckScript() { return ["#!/usr/bin/env sh", "set -eu", "wget -qO- http://127.0.0.1:${API_PORT:-8080}/health >/dev/null", ""].join("\n"); }
 
   private renderOpenApi(name: string) {
     return ["openapi: 3.0.3", "info:", `  title: ${name} API`, "  version: 0.1.0", "paths:", "  /health:", "    get:", "      responses:", "        '200': { description: OK }", "  /jobs:", "    get:", "      responses:", "        '200': { description: Job list }", "    post:", "      responses:", "        '201': { description: Created job }", "  /jobs/{id}:", "    get:", "      parameters:", "        - in: path", "          name: id", "          required: true", "          schema: { type: string }", "      responses:", "        '200': { description: Job }", ""].join("\n");
   }
 
-  private renderBackendFiles(selection: StackSelection): QuickStartGeneratedFile[] {
-    if (selection.backend === "Go Fiber") return this.renderGoFiberFiles();
-    if (selection.backend === "FastAPI") return this.renderFastApiFiles(selection);
-    if (selection.backend === "NestJS") return this.renderNestFiles(selection);
-    return this.renderExpressFiles(selection);
+  private renderBackendFiles(selection: StackSelection, includeHelloWorld: boolean): QuickStartGeneratedFile[] {
+    if (selection.backend === "Go Fiber") return this.renderGoFiberFiles(includeHelloWorld);
+    if (selection.backend === "FastAPI") return this.renderFastApiFiles(selection, includeHelloWorld);
+    if (selection.backend === "NestJS") return this.renderNestFiles(selection, includeHelloWorld);
+    return this.renderExpressFiles(selection, includeHelloWorld);
   }
 
-  private renderGoFiberFiles(): QuickStartGeneratedFile[] {
+  private renderGoFiberFiles(includeHelloWorld: boolean): QuickStartGeneratedFile[] {
     const code = `package main
 
 import (
@@ -262,12 +288,12 @@ func main() {
   db := connectPostgres()
   redisClient := redis.NewClient(&redis.Options{Addr: "redis:6379"})
   rabbitURL := os.Getenv("RABBITMQ_URL")
-  if rabbitURL == "" { rabbitURL = "amqp://guest:guest@rabbitmq:5672" }
+  if rabbitURL == "" { rabbitURL = "amqp://guest:***@rabbitmq:5672" }
 
   app := fiber.New()
   app.Get("/swagger/*", swagger.HandlerDefault)
   app.Get("/swagger", func(c *fiber.Ctx) error { return c.Redirect("/swagger/index.html") })
-  app.Get("/health", func(c *fiber.Ctx) error {
+${includeHelloWorld ? '  app.Get("/hello", func(c *fiber.Ctx) error { return c.JSON(fiber.Map{"message":"Hello World from GoneOps QuickStart","service":"Go Fiber"}) })\n' : ''}  app.Get("/health", func(c *fiber.Ctx) error {
     ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second); defer cancel()
     dbOK := db.PingContext(ctx) == nil
     redisOK := redisClient.Ping(ctx).Err() == nil
@@ -320,23 +346,23 @@ func publishRabbit(url string, body string) error { conn, err := amqp.Dial(url);
     ];
   }
 
-  private renderExpressFiles(selection: StackSelection): QuickStartGeneratedFile[] {
+  private renderExpressFiles(selection: StackSelection, includeHelloWorld: boolean): QuickStartGeneratedFile[] {
     return [
       { path: "backend/package.json", content: JSON.stringify({ type: "module", scripts: { build: "node --check src/server.js", start: "node src/server.js" }, dependencies: { express: "^4.19.2", "swagger-ui-express": "^5.0.1" }, devDependencies: {} }, null, 2) + "\n" },
-      { path: "backend/src/server.js", content: this.renderNodeServer("ExpressJS", selection) },
+      { path: "backend/src/server.js", content: this.renderNodeServer("ExpressJS", selection, includeHelloWorld) },
       { path: "backend/Dockerfile", content: "FROM node:22-alpine\nWORKDIR /app\nCOPY package.json package-lock.json* ./\nRUN npm install --omit=dev\nCOPY src ./src\nCMD [\"npm\", \"start\"]\n" }
     ];
   }
 
-  private renderNestFiles(selection: StackSelection): QuickStartGeneratedFile[] {
+  private renderNestFiles(selection: StackSelection, includeHelloWorld: boolean): QuickStartGeneratedFile[] {
     return [
       { path: "backend/package.json", content: JSON.stringify({ type: "module", scripts: { build: "node --check src/server.js", start: "node src/server.js" }, dependencies: { express: "^4.19.2", "swagger-ui-express": "^5.0.1" } }, null, 2) + "\n" },
-      { path: "backend/src/server.js", content: this.renderNodeServer("NestJS-compatible", selection) },
+      { path: "backend/src/server.js", content: this.renderNodeServer("NestJS-compatible", selection, includeHelloWorld) },
       { path: "backend/Dockerfile", content: "FROM node:22-alpine\nWORKDIR /app\nCOPY package.json package-lock.json* ./\nRUN npm install --omit=dev\nCOPY src ./src\nCMD [\"npm\", \"start\"]\n" }
     ];
   }
 
-  private renderNodeServer(label: string, selection: StackSelection) {
+  private renderNodeServer(label: string, selection: StackSelection, includeHelloWorld: boolean) {
     return `import express from "express";
 import swaggerUi from "swagger-ui-express";
 
@@ -346,7 +372,8 @@ const jobs = new Map();
 const app = express();
 app.use(express.json());
 app.use("/swagger", swaggerUi.serve, swaggerUi.setup({ openapi: "3.0.3", info: { title: "QuickStart API", version: "0.1.0" }, paths: {} }));
-app.get("/health", (_req, res) => res.json({ status: "ok", backend: "${label}", database: "${selection.database}", redis: Boolean(process.env.REDIS_URL), rabbitmq: Boolean(process.env.RABBITMQ_URL) }));
+${includeHelloWorld ? `app.get("/hello", (_req, res) => res.json({ message: "Hello World from GoneOps QuickStart", service: "${label}" }));
+` : ""}app.get("/health", (_req, res) => res.json({ status: "ok", backend: "${label}", database: "${selection.database}", redis: Boolean(process.env.REDIS_URL), rabbitmq: Boolean(process.env.RABBITMQ_URL) }));
 app.get("/jobs", (_req, res) => res.json(Array.from(jobs.values())));
 app.post("/jobs", (req, res) => { const id = String(Date.now()); const job = { id, title: req.body?.title ?? "Create Demo Job", status: "processed" }; jobs.set(id, job); res.status(201).json(job); });
 app.get("/jobs/:id", (req, res) => { const job = jobs.get(req.params.id); if (!job) return res.status(404).json({ error: "not_found" }); return res.json(job); });
@@ -354,10 +381,10 @@ app.listen(Number(port), () => console.log("api listening on " + port));
 `;
   }
 
-  private renderFastApiFiles(selection: StackSelection): QuickStartGeneratedFile[] {
+  private renderFastApiFiles(selection: StackSelection, includeHelloWorld: boolean): QuickStartGeneratedFile[] {
     return [
       { path: "backend/requirements.txt", content: "fastapi==0.115.0\nuvicorn[standard]==0.30.6\n" },
-      { path: "backend/main.py", content: `import os, time\nfrom fastapi import FastAPI, HTTPException\n\napp = FastAPI(title="QuickStart API")\njobs = {}\n\n@app.get("/health")\ndef health(): return {"status":"ok","database":"${selection.database}","redis": bool(os.getenv("REDIS_URL")),"rabbitmq": bool(os.getenv("RABBITMQ_URL"))}\n\n@app.get("/swagger")\ndef swagger(): return {"url":"/docs"}\n\n@app.post("/jobs", status_code=201)\ndef create_job(body: dict):\n    job_id = str(int(time.time() * 1000)); job = {"id": job_id, "title": body.get("title", "Create Demo Job"), "status":"processed"}; jobs[job_id] = job; return job\n\n@app.get("/jobs")\ndef list_jobs(): return list(jobs.values())\n\n@app.get("/jobs/{job_id}")\ndef get_job(job_id: str):\n    if job_id not in jobs: raise HTTPException(status_code=404, detail="not_found")\n    return jobs[job_id]\n` },
+      { path: "backend/main.py", content: `import os, time\nfrom fastapi import FastAPI, HTTPException\n\napp = FastAPI(title="QuickStart API")\njobs = {}\n\n${includeHelloWorld ? `@app.get("/hello")\ndef hello(): return {"message":"Hello World from GoneOps QuickStart","service":"FastAPI"}\n\n` : ""}@app.get("/health")\ndef health(): return {"status":"ok","database":"${selection.database}","redis": bool(os.getenv("REDIS_URL")),"rabbitmq": bool(os.getenv("RABBITMQ_URL"))}\n\n@app.get("/swagger")\ndef swagger(): return {"url":"/docs"}\n\n@app.post("/jobs", status_code=201)\ndef create_job(body: dict):\n    job_id = str(int(time.time() * 1000)); job = {"id": job_id, "title": body.get("title", "Create Demo Job"), "status":"processed"}; jobs[job_id] = job; return job\n\n@app.get("/jobs")\ndef list_jobs(): return list(jobs.values())\n\n@app.get("/jobs/{job_id}")\ndef get_job(job_id: str):\n    if job_id not in jobs: raise HTTPException(status_code=404, detail="not_found")\n    return jobs[job_id]\n` },
       { path: "backend/Dockerfile", content: "FROM python:3.12-alpine\nWORKDIR /app\nCOPY requirements.txt ./\nRUN pip install --no-cache-dir -r requirements.txt\nCOPY main.py ./\nCMD [\"sh\", \"-c\", \"uvicorn main:app --host 0.0.0.0 --port ${API_PORT}\"]\n" }
     ];
   }
@@ -423,12 +450,26 @@ app.listen(Number(port), () => console.log("api listening on " + port));
     return `# ${name}\n\nGenerated by GoneOps QuickStart Edition.\n\n## Architecture overview\n\n${selection.frontend} frontend, ${selection.backend} backend API, ${selection.database}, and ${selection.infrastructure.join(", ")} run together on Docker Compose automatic service networking.\n\n## Service list\n\n${this.generatedServices(selection).map((service) => `- ${service}`).join("\n")}\n\n## Startup steps\n\n\`\`\`bash\ncp .env.example .env\ndocker compose up --build\n\`\`\`\n\n## Ports and URLs\n\n${ports.map((port) => `- ${port.name}: host ${port.external} -> container ${port.internal}${port.url ? ` (${port.url})` : ""}`).join("\n")}\n\nSwagger URL: http://localhost:\${API_APP_PORT}/swagger\n\n## Credentials\n\n${this.credentials(selection).map((credential) => `- ${credential.service}: user=${credential.username} password=${credential.password} ${credential.note}`).join("\n")}\n\n## API usage examples\n\n\`\`\`bash\ncurl http://localhost:\${API_APP_PORT}/health\ncurl http://localhost:\${API_APP_PORT}/jobs\ncurl -X POST http://localhost:\${API_APP_PORT}/jobs -H 'content-type: application/json' -d '{"title":"Create Demo Job"}'\n\`\`\`\n\n## Docker commands\n\n\`\`\`bash\ndocker compose ps\ndocker compose logs -f\ndocker compose down -v\n\`\`\`\n\n## Environment variables\n\nAll ports and credentials are configured through .env. Start from .env.example.\n\n## Troubleshooting\n\n- If a host port is busy, change the corresponding *_APP_PORT in .env.\n- If a service is unhealthy, run docker compose logs <service>.\n- Recreate clean state with docker compose down -v.\n\n## Project structure\n\n- backend/\n- frontend/\n- database/\n- docker-compose.yml\n- openapi.yaml\n- scripts/healthcheck.sh\n\nProject folder: ${slug}\n`;
   }
 
-  private validate(files: QuickStartGeneratedFile[], selection: StackSelection) {
-    const required = ["README.md", "docker-compose.yml", ".env.example", "Makefile", "openapi.yaml", "backend/Dockerfile", "frontend/Dockerfile", "scripts/healthcheck.sh"];
+  private validate(files: QuickStartGeneratedFile[], selection: StackSelection, options: { includeReadme: boolean; includeDockerCompose: boolean; includeCi: boolean; includeHelloWorld: boolean }) {
+    const required = [
+      ...(options.includeReadme ? ["README.md"] : []),
+      ...(options.includeDockerCompose ? ["docker-compose.yml"] : []),
+      ...(options.includeCi ? [".github/workflows/ci.yml"] : []),
+      ".env.example",
+      "Makefile",
+      "openapi.yaml",
+      "backend/Dockerfile",
+      "frontend/Dockerfile",
+      "scripts/healthcheck.sh"
+    ];
     const paths = files.map((file) => file.path);
     for (const requiredPath of required) if (!paths.some((path) => path.endsWith(requiredPath))) throw new Error(`Missing QuickStart generated file: ${requiredPath}`);
     const joined = files.map((file) => file.content).join("\n");
-    for (const marker of ["/health", "/swagger", "/jobs", "Create Demo Job", "docker compose up --build", "${API_APP_PORT", "${API_PORT", selection.database]) {
+    const markers = ["/health", "/swagger", "/jobs", "Create Demo Job", "${API_APP_PORT", "${API_PORT", selection.database];
+    if (options.includeHelloWorld) markers.push("/hello", "Hello World");
+    if (options.includeDockerCompose) markers.push("docker compose up --build");
+    if (options.includeCi) markers.push("actions/checkout@v4");
+    for (const marker of markers) {
       if (!joined.includes(marker)) throw new Error(`Missing QuickStart generated marker: ${marker}`);
     }
     for (const file of files) if (/ghp_|sk-[A-Za-z0-9]|BEGIN (RSA|OPENSSH|PRIVATE) KEY/.test(file.content)) throw new Error(`Secret-looking token found in generated file ${file.path}`);

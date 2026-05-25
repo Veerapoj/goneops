@@ -3,41 +3,94 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
 const quickstart = readFileSync(new URL("../app/quickstart/page.tsx", import.meta.url), "utf8");
+const projectRoute = readFileSync(new URL("../app/quickstart/projects/[slug]/page.tsx", import.meta.url), "utf8");
 const advanced = readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8");
 
-test("quickstart edition is a separate one click project bootstrap UI", () => {
+test("quickstart edition is a separate clickable create project flow", () => {
   for (const label of [
     "GoneOps QuickStart Edition",
     "One Click Project Bootstrap",
-    "Select stack. Click generate. Run locally.",
-    "Generate Real Runnable Project",
+    "Create Project",
+    "Generate a runnable local project.",
+    "This is now wired to the QuickStart backend API",
+    "Generate Project",
     "Advanced workspace"
   ]) {
     assert.ok(quickstart.includes(label));
   }
 });
 
-test("quickstart exposes supported MVP stack components", () => {
-  for (const label of ["NextJS", "React", "Vue", "Static HTML", "Go Fiber", "NestJS", "ExpressJS", "FastAPI", "PostgreSQL", "MySQL", "MongoDB", "Redis", "RabbitMQ", "MinIO"]) {
+test("quickstart create form posts selected options to backend generate API", () => {
+  for (const snippet of [
+    "fetch(`${apiBase}/quickstart/generate`",
+    "method: \"POST\"",
+    "name: projectName",
+    "stack,",
+    "database,",
+    "cache,",
+    "queue,",
+    "includeReadme",
+    "includeDockerCompose",
+    "includeCi",
+    "includeHelloWorld",
+    "router.push(generated.project.url)"
+  ]) {
+    assert.ok(quickstart.includes(snippet));
+  }
+});
+
+test("quickstart exposes selectable create project fields", () => {
+  for (const label of [
+    "Project Name:",
+    "Stack:",
+    "Database:",
+    "Cache:",
+    "Queue:",
+    "NestJS",
+    "NextJS",
+    "Go Fiber",
+    "FastAPI",
+    "PostgreSQL",
+    "MySQL",
+    "MongoDB",
+    "Redis",
+    "RabbitMQ",
+    "Generate README",
+    "Generate Docker Compose",
+    "Generate CI/CD",
+    "Generate Hello World"
+  ]) {
     assert.ok(quickstart.includes(label));
   }
 });
 
-test("quickstart result panel shows real runnable project output fields", () => {
-  for (const label of ["Project Name", "Stack Summary", "Generated Services", "Container Status", "Ports", "URLs", "Credentials", "Swagger URL", "API Examples", "Docker Commands"]) {
+test("quickstart result panel shows generated project link, logs, and API request target", () => {
+  for (const label of [
+    "Manual Result",
+    "POST {apiBase}/quickstart/generate",
+    "Project URL: /quickstart/projects/goneops-demo",
+    "README preview after generation",
+    "Open generated project:",
+    "result.stackSummary",
+    "result.generationLogs.map"
+  ]) {
     assert.ok(quickstart.includes(label));
   }
 });
 
-test("quickstart realtime generation logs cover build and validation", () => {
-  for (const label of ["[✓] Generate backend", "[✓] Generate Swagger", "[✓] Generate PostgreSQL config", "[✓] Generate Redis config", "[✓] Generate RabbitMQ workflow", "[✓] Generate Docker Compose", "[✓] Build containers", "[✓] Run health checks", "[✓] Validate API", "[✓] Validate Swagger"]) {
-    assert.ok(quickstart.includes(label));
-  }
-});
-
-test("quickstart includes generated files and env-driven commands", () => {
-  for (const label of ["README.md", "docker-compose.yml", ".env.example", "Makefile", "openapi.yaml", "backend/Dockerfile", "frontend/Dockerfile", "database/seed.sql", "scripts/healthcheck.sh", "docker compose up --build", "${API_APP_PORT}"]) {
-    assert.ok(quickstart.includes(label));
+test("quickstart generated project route loads backend project URL and renders README", () => {
+  for (const label of [
+    "GoneOps QuickStart Project",
+    "fetch(`${apiBase}/quickstart/projects/${slug}`)",
+    "Loaded from backend project URL",
+    "Loaded from browser cache",
+    "Project URL",
+    "Generated files",
+    "README Preview",
+    "Create another project",
+    "project.readme"
+  ]) {
+    assert.ok(projectRoute.includes(label));
   }
 });
 
