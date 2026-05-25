@@ -23,9 +23,12 @@ test("QuickStart generates a real project and opens README project page", async 
   await expect(page.getByText("Loaded from backend project URL")).toBeVisible();
   await expect(page.getByText("Project URL", { exact: true })).toBeVisible();
   await expect(page.getByText("Generated files")).toBeVisible();
-  await expect(page.getByText("README Preview")).toBeVisible();
+  await expect(page.getByText("File Preview")).toBeVisible();
   await expect(page.getByText("# goneops-demo")).toBeVisible();
   await expect(page.getByText("docker compose up --build")).toBeVisible();
   await expect(page.getByText("curl http://localhost:${API_APP_PORT}/health")).toBeVisible();
-  await expect(page.getByText("goneops-demo/.github/workflows/ci.yml")).toBeVisible();
+  await page.getByRole("button", { name: "goneops-demo/.github/workflows/ci.yml" }).click();
+  await expect(page.getByText("Selected file")).toBeVisible();
+  await expect(page.getByText("name: quickstart-ci")).toBeVisible();
+  await expect(page.getByText("actions/checkout@v4")).toBeVisible();
 });

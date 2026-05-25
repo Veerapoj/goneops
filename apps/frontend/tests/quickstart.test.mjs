@@ -78,7 +78,7 @@ test("quickstart result panel shows generated project link, logs, and API reques
   }
 });
 
-test("quickstart generated project route loads backend project URL and renders README", () => {
+test("quickstart generated project route loads backend project URL and renders selectable file preview", () => {
   for (const label of [
     "GoneOps QuickStart Project",
     "fetch(`${apiBase}/quickstart/projects/${slug}`)",
@@ -86,9 +86,11 @@ test("quickstart generated project route loads backend project URL and renders R
     "Loaded from browser cache",
     "Project URL",
     "Generated files",
-    "README Preview",
     "Create another project",
-    "project.readme"
+    "File Preview",
+    "Selected file",
+    "setSelectedFilePath(file.path)",
+    "selectedFile?.content",
   ]) {
     assert.ok(projectRoute.includes(label));
   }
