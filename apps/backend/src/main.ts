@@ -6,6 +6,24 @@ function traceIdFromRequestId(requestId: string): string {
   return requestId.replace(/[^a-fA-F0-9]/g, "").padEnd(32, "0").slice(0, 32);
 }
 
+function isAllowedDevOrigin(origin: string): boolean {
+  try {
+    const url = new URL(origin);
+    const host = url.hostname;
+    return (
+      url.protocol === "http:" &&
+      (host === "localhost" ||
+        host === "127.0.0.1" ||
+        host.startsWith("192.168.") ||
+        host.startsWith("10.") ||
+        /^172\.(1[6-9]|2\d|3[0-1])\./.test(host) ||
+        /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(host))
+    );
+  } catch {
+    return false;
+  }
+}
+
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
     bufferLogs: true
@@ -14,7 +32,7 @@ async function bootstrap() {
 
   app.enableCors({
     origin: (origin: string | undefined, callback: (error: Error | null, allow?: boolean) => void) => {
-      if (!origin || /^https?:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+)(:\d+)?$/.test(origin)) {
+      if (!origin || isAllowedDevOrigin(origin)) {
         callback(null, true);
         return;
       }

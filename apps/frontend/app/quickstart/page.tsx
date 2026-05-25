@@ -4,7 +4,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-const apiBase = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://127.0.0.1:4100";
+function getApiBase() {
+  if (process.env.NEXT_PUBLIC_BACKEND_URL) return process.env.NEXT_PUBLIC_BACKEND_URL;
+  if (typeof window !== "undefined") return `${window.location.protocol}//${window.location.hostname}:4000`;
+  return "http://localhost:4000";
+}
 const stacks = ["NestJS", "NextJS", "Go Fiber", "FastAPI"];
 const databases = ["PostgreSQL", "MySQL", "MongoDB", "None"];
 const caches = ["Redis", "None"];
@@ -31,6 +35,7 @@ export default function QuickStartPage() {
   const [includeHelloWorld, setIncludeHelloWorld] = useState(true);
   const [status, setStatus] = useState("Ready to generate");
   const [result, setResult] = useState<GenerateResponse | null>(null);
+  const apiBase = getApiBase();
 
   async function generateProject() {
     setStatus("Generating project from backend API...");

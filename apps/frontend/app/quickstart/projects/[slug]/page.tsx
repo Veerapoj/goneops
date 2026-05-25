@@ -4,7 +4,11 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
-const apiBase = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://127.0.0.1:4100";
+function getApiBase() {
+  if (process.env.NEXT_PUBLIC_BACKEND_URL) return process.env.NEXT_PUBLIC_BACKEND_URL;
+  if (typeof window !== "undefined") return `${window.location.protocol}//${window.location.hostname}:4000`;
+  return "http://localhost:4000";
+}
 
 type GeneratedProject = {
   project: { name: string; slug: string };
@@ -26,6 +30,7 @@ export default function QuickStartProjectPage() {
     let active = true;
     async function loadProject() {
       try {
+        const apiBase = getApiBase();
         const response = await fetch(`${apiBase}/quickstart/projects/${slug}`);
         if (response.ok) {
           const data = (await response.json()) as GeneratedProject;
