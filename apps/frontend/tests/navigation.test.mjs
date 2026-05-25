@@ -4,8 +4,8 @@ import { test } from "node:test";
 
 const page = readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8");
 
-test("project generator UI exposes Phase 3 navigation and workflow", () => {
-  for (const label of ["Dashboard", "Projects", "Project Generator", "Create Project UI", "Generate Project", "Phase 3"]) {
+test("project generator UI exposes Phase 4 navigation and workflow", () => {
+  for (const label of ["Dashboard", "Projects", "Project Generator", "Create Project UI", "Generate Project", "Phase 4"]) {
     assert.match(page, new RegExp(label));
   }
 });
@@ -26,6 +26,19 @@ test("design generator UI exposes Mermaid and generated architecture documents",
     "API contract documentation"
   ]) {
     assert.match(page, new RegExp(label));
+  }
+});
+
+test("git and CI preview exposes generated integration outputs", () => {
+  for (const label of [
+    "Git + CI/CD Preview",
+    "Git initialization script",
+    "Initial commit generation",
+    "CI workflow template",
+    ".github/workflows/ci.yml",
+    "scripts/init-git.sh"
+  ]) {
+    assert.match(page, new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }
 });
 

@@ -3,7 +3,7 @@ const navItems = ["Dashboard", "Projects", "Templates", "Observability", "Settin
 const statusItems = [
   { label: "Frontend", value: "Ready" },
   { label: "Backend", value: "Ready" },
-  { label: "Generator", value: "Phase 3" },
+  { label: "Generator", value: "Phase 4" },
   { label: "Local Services", value: "Compose" }
 ];
 
@@ -28,7 +28,10 @@ const generatedStructure = [
   "my-service/docs/context-diagram.md",
   "my-service/docs/system-diagram.md",
   "my-service/docs/deployment-diagram.md",
-  "my-service/docs/api-contract.md"
+  "my-service/docs/api-contract.md",
+  "my-service/.gitignore",
+  "my-service/.github/workflows/ci.yml",
+  "my-service/scripts/init-git.sh"
 ];
 
 export default function Home() {
@@ -158,6 +161,18 @@ export default function Home() {
                     <li>API contract documentation</li>
                   </ul>
                 </div>
+              </div>
+            </section>
+
+            <section className="rounded border border-border bg-panel p-5 lg:col-span-2">
+              <h2 className="text-lg font-semibold">Git + CI/CD Preview</h2>
+              <p className="mt-3 text-sm leading-6 text-muted">
+                Phase 4 adds local Git bootstrap files and a GitHub Actions CI workflow to generated project output.
+              </p>
+              <div className="mt-4 grid gap-4 md:grid-cols-3">
+                <div className="rounded bg-background p-4 text-sm">Git initialization script</div>
+                <div className="rounded bg-background p-4 text-sm">Initial commit generation</div>
+                <div className="rounded bg-background p-4 text-sm">CI workflow template</div>
               </div>
             </section>
           </div>

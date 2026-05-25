@@ -19,6 +19,8 @@ test("project generator creates a valid project structure", () => {
   assert.ok(output.structure.includes("customer-portal/docs/system-diagram.md"));
   assert.ok(output.structure.includes("customer-portal/docs/deployment-diagram.md"));
   assert.ok(output.structure.includes("customer-portal/docs/api-contract.md"));
+  assert.ok(output.structure.includes("customer-portal/.github/workflows/ci.yml"));
+  assert.ok(output.structure.includes("customer-portal/scripts/init-git.sh"));
   assert.ok(output.files.some((file) => file.path === "customer-portal/docker-compose.yml"));
 });
 
@@ -62,4 +64,26 @@ test("project generator creates readable Mermaid design documents and API contra
   assert.ok(apiContract?.content.includes("GET | /health"));
   assert.ok(output.validation.checks.includes("mermaid diagrams generated"));
   assert.ok(output.validation.checks.includes("api contract generated"));
+});
+
+
+test("project generator creates Git bootstrap and CI workflow files", () => {
+  const output = service.generate({
+    name: "Customer Portal",
+    stack: "next-nest",
+    template: "saas-dashboard",
+    architecturePreset: "local-first"
+  });
+
+  const gitignore = output.files.find((file) => file.path.endsWith(".gitignore"));
+  const ci = output.files.find((file) => file.path.endsWith(".github/workflows/ci.yml"));
+  const initGit = output.files.find((file) => file.path.endsWith("scripts/init-git.sh"));
+
+  assert.ok(gitignore?.content.includes(".env"));
+  assert.ok(ci?.content.includes("actions/checkout@v4"));
+  assert.ok(ci?.content.includes("npm ci"));
+  assert.ok(initGit?.content.includes("git init"));
+  assert.ok(initGit?.content.includes("chore: initialize generated project"));
+  assert.ok(output.validation.checks.includes("git initialization script generated"));
+  assert.ok(output.validation.checks.includes("ci workflow generated"));
 });
