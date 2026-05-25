@@ -4,8 +4,8 @@ import { test } from "node:test";
 
 const page = readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8");
 
-test("project generator UI exposes Phase 5 navigation and workflow", () => {
-  for (const label of ["Dashboard", "Projects", "Project Generator", "Create Project UI", "Generate Project", "Phase 5"]) {
+test("project generator UI exposes Phase 6 navigation and workflow", () => {
+  for (const label of ["Dashboard", "Projects", "Project Generator", "Create Project UI", "Generate Project", "Phase 6"]) {
     assert.match(page, new RegExp(label));
   }
 });
@@ -58,6 +58,24 @@ test("observability preview exposes generated baseline outputs", () => {
     "apps/api/src/observability.ts",
     "apps/api/src/health.ts",
     "docs/observability.md"
+  ]) {
+    assert.ok(page.includes(label));
+  }
+});
+
+
+test("phase 6 UI polish exposes responsive dark mode and navigation checks", () => {
+  for (const label of [
+    "Phase 6 — UI Polish",
+    "UI Polish QA Checklist",
+    "Responsive UI",
+    "Dark mode ready",
+    "Navigation works",
+    "No broken pages",
+    "aria-current",
+    "Primary navigation",
+    "lg:grid-cols-[272px_1fr]",
+    "sm:grid-cols-2"
   ]) {
     assert.ok(page.includes(label));
   }

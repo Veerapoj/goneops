@@ -6,12 +6,12 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        background: "#f7f8f5",
-        foreground: "#161816",
-        panel: "#ffffff",
-        muted: "#5d655f",
-        border: "#d9ded8",
-        accent: "#0f766e",
+        background: "var(--background)",
+        foreground: "var(--foreground)",
+        panel: "var(--panel)",
+        muted: "var(--muted)",
+        border: "var(--border)",
+        accent: "var(--accent)",
         signal: "#c2410c"
       }
     }
