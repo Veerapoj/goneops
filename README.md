@@ -74,7 +74,24 @@ npm run qa:phase5
 npm run qa:phase6
 ```
 
-## Project Generator API
+## Generation APIs
+
+### GoneOps QuickStart Edition
+
+QuickStart is a separate lightweight flow for One Click Project Bootstrap. It does not replace the advanced AI workspace.
+
+UI: `http://localhost:3000/quickstart`
+
+```bash
+curl -fsS http://localhost:4000/quickstart/options
+curl -fsS -X POST http://localhost:4000/quickstart/generate \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"Hello Local","stack":"node-http"}'
+```
+
+Generated QuickStart output focuses only on stack selection, README, `.env.example`, Docker Compose, a Hello World app, and local startup validation. Ports are provided through `.env` values.
+
+### Advanced Workspace Project Generator
 
 ```bash
 curl -fsS http://localhost:4000/projects/options
