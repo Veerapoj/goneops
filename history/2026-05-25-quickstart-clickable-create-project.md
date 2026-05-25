@@ -17,3 +17,8 @@ Completed the interrupted task to make `/quickstart` a real clickable Create Pro
 
 ## Commit
 Pending at time of record creation until final git commit/push step completes.
+
+## 2026-05-25 21:11 +07 Playwright QA continuation
+- Added Playwright/Chrome Dev headless e2e validation to the QuickStart QA path.
+- Fixed Playwright workspace startup, accessible Project Name field lookup, strict text assertions, and built frontend API-base alignment for backend port 4100.
+- Validation passed: `npm run qa:quickstart`, runtime `POST /quickstart/generate`, headless project route validation, Docker Compose config/status, and secret-like token scan.

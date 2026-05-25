@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
-const apiBase = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:4000";
+const apiBase = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://127.0.0.1:4100";
 
 type GeneratedProject = {
   project: { name: string; slug: string };

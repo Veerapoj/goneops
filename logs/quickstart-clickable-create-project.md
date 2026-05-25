@@ -12,3 +12,15 @@
 - Started frontend on port 3101 and validated HTTP 200 responses for `/quickstart` and `/quickstart/projects/goneops-clickable-demo`.
 - Validated Docker Compose config and current service status via docker group; postgres, redis, and rabbitmq were healthy.
 - Ran a secret-pattern scan; zero findings.
+
+## 2026-05-25 21:11 +07
+- Continued after the user-requested one-hour wait.
+- Ran `npm run qa:quickstart`; first Playwright failure was caused by workspace commands being executed from `apps/frontend`, so backend workspace lookup failed.
+- Updated `apps/frontend/playwright.config.ts` webServer commands to `cd ../..` before running root workspace scripts.
+- Fixed e2e strict locator ambiguity for `Create Project` and `Project URL`.
+- Fixed the Project Name label/input association in `apps/frontend/app/quickstart/page.tsx`.
+- Aligned QuickStart client default API base to `http://127.0.0.1:4100` in both QuickStart pages so production builds target the Playwright backend.
+- Re-ran `npm run qa:quickstart`: passed.
+- Runtime checked backend `POST /quickstart/generate` on port 4100 and headless Chrome project page on frontend port 3100.
+- Validated Docker Compose with docker group and confirmed postgres, redis, and rabbitmq healthy.
+- Ran tracked-source secret-like token scan; zero findings.

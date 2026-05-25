@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-const apiBase = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:4000";
+const apiBase = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://127.0.0.1:4100";
 const stacks = ["NestJS", "NextJS", "Go Fiber", "FastAPI"];
 const databases = ["PostgreSQL", "MySQL", "MongoDB", "None"];
 const caches = ["Redis", "None"];
@@ -84,8 +84,8 @@ export default function QuickStartPage() {
             <h1 className="mt-3 text-4xl font-semibold tracking-[-0.04em]">Generate a runnable local project.</h1>
             <p className="mt-3 text-sm leading-6 text-[#666]">This is now wired to the QuickStart backend API. Click generate to create project files, then open a project URL that renders the generated README.</p>
 
-            <label className="mt-8 block text-sm font-semibold">Project Name:</label>
-            <input className="mt-2 w-full rounded-xl border border-[#dddddd] px-4 py-3 font-mono text-sm outline-none focus:border-black" value={projectName} onChange={(event) => setProjectName(event.target.value)} />
+            <label className="mt-8 block text-sm font-semibold" htmlFor="quickstart-project-name">Project Name:</label>
+            <input id="quickstart-project-name" className="mt-2 w-full rounded-xl border border-[#dddddd] px-4 py-3 font-mono text-sm outline-none focus:border-black" value={projectName} onChange={(event) => setProjectName(event.target.value)} />
 
             <RadioGroup title="Stack:" items={stacks} selected={stack} onSelect={setStack} />
             <RadioGroup title="Database:" items={databases} selected={database} onSelect={setDatabase} />

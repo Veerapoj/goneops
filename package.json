@@ -21,7 +21,8 @@
     "qa:phase6": "npm run build && npm run test && npm run lint",
     "qa:mvp": "npm run build && npm run test && npm run lint",
     "e2e:mvp": "node scripts/e2e-mvp.mjs",
-    "qa:quickstart": "npm run build && npm run test && npm run lint"
+    "qa:quickstart": "npm run build && npm run test && npm run lint && npm run e2e:quickstart",
+    "e2e:quickstart": "npm --workspace apps/frontend run e2e:quickstart"
   },
   "engines": {
     "node": ">=22.0.0",

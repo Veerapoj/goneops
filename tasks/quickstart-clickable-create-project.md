@@ -16,6 +16,8 @@ Turned `/quickstart` from a static/mockup QuickStart screen into a real clickabl
 - Client navigation to `/quickstart/projects/[slug]` after generation.
 - `/quickstart/projects/[slug]` page that loads the generated project from backend first, then browser cache fallback, and renders generated files plus README preview.
 - Updated frontend QuickStart tests from old mockup assertions to the real clickable Create Project flow.
+- Added Playwright end-to-end coverage for the real QuickStart browser flow using Chrome for Testing Dev headless.
+- Added `e2e:quickstart` scripts and included Playwright in root `qa:quickstart`.
 
 ## QA
 - `npm run qa:quickstart` passed.
@@ -28,6 +30,21 @@ Turned `/quickstart` from a static/mockup QuickStart screen into a real clickabl
   - `/quickstart/projects/goneops-clickable-demo` returned HTTP 200 and contained project/README page shell.
 - Docker Compose validation passed with `sg docker -c 'docker compose config --quiet && docker compose ps --format json'`; postgres, redis, and rabbitmq were running healthy.
 - Secret scan passed with zero findings.
+
+## Playwright headless QA update
+- Completed on 2026-05-25 21:11 +07.
+- Chrome for Testing Dev executable used: `/home/veenews/.cache/chrome-for-testing/chrome-dev-150.0.7846.4/chrome-linux64/chrome`.
+- Playwright web servers run backend on `4100` and frontend on `3100`.
+- Fixed Playwright config workspace startup from `apps/frontend` by running workspace commands from repo root.
+- Fixed QuickStart form accessibility by binding the Project Name label to its input.
+- Changed frontend QuickStart default backend URL to `http://127.0.0.1:4100` so production builds match the Playwright runtime backend.
+- Stabilized strict Playwright text assertions.
+- `npm run qa:quickstart` passed including build, tests, lint, and Playwright e2e.
+- Runtime validation passed:
+  - `POST http://127.0.0.1:4100/quickstart/generate` returned slug `goneops-demo`, URL `/quickstart/projects/goneops-demo`, 14 files, and README content.
+  - Headless Chrome opened `http://127.0.0.1:3100/quickstart/projects/goneops-demo` and verified project page plus README preview.
+- Docker Compose validation passed with `sg docker -c 'docker compose config --quiet && docker compose ps --format json'`; postgres, redis, and rabbitmq were running healthy.
+- Secret-like token scan passed with zero findings.
 
 ## Boundaries
 - No secrets were printed or committed.
