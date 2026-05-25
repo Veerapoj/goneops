@@ -16,7 +16,8 @@
     "qa:phase3": "npm run build && npm run test && npm run lint",
     "qa:phase4": "npm run build && npm run test && npm run lint",
     "docker:up": "docker compose up -d",
-    "docker:down": "docker compose down"
+    "docker:down": "docker compose down",
+    "qa:phase5": "npm run build && npm run test && npm run lint"
   },
   "engines": {
     "node": ">=22.0.0",

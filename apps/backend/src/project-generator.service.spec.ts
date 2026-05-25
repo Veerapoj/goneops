@@ -87,3 +87,33 @@ test("project generator creates Git bootstrap and CI workflow files", () => {
   assert.ok(output.validation.checks.includes("git initialization script generated"));
   assert.ok(output.validation.checks.includes("ci workflow generated"));
 });
+
+
+test("project generator creates observability baseline files", () => {
+  const output = service.generate({
+    name: "Customer Portal",
+    stack: "next-nest",
+    template: "saas-dashboard",
+    architecturePreset: "local-first"
+  });
+
+  const observability = output.files.find((file) => file.path.endsWith("apps/api/src/observability.ts"));
+  const health = output.files.find((file) => file.path.endsWith("apps/api/src/health.ts"));
+  const docs = output.files.find((file) => file.path.endsWith("docs/observability.md"));
+
+  assert.ok(output.structure.includes("customer-portal/apps/api/src/observability.ts"));
+  assert.ok(output.structure.includes("customer-portal/apps/api/src/health.ts"));
+  assert.ok(output.structure.includes("customer-portal/docs/observability.md"));
+  assert.ok(observability?.content.includes("request_id"));
+  assert.ok(observability?.content.includes("trace_id"));
+  assert.ok(observability?.content.includes("startOpenTelemetryBaseline"));
+  assert.ok(observability?.content.includes("logStructured"));
+  assert.ok(health?.content.includes("/health"));
+  assert.ok(health?.content.includes("/ready"));
+  assert.ok(health?.content.includes("/live"));
+  assert.ok(docs?.content.includes("OpenTelemetry Baseline"));
+  assert.ok(docs?.content.includes("Structured Logging"));
+  assert.ok(output.validation.checks.includes("observability baseline generated"));
+  assert.ok(output.validation.checks.includes("structured logging generated"));
+  assert.ok(output.validation.checks.includes("health readiness liveness generated"));
+});

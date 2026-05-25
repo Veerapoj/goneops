@@ -4,8 +4,8 @@ import { test } from "node:test";
 
 const page = readFileSync(new URL("../app/page.tsx", import.meta.url), "utf8");
 
-test("project generator UI exposes Phase 4 navigation and workflow", () => {
-  for (const label of ["Dashboard", "Projects", "Project Generator", "Create Project UI", "Generate Project", "Phase 4"]) {
+test("project generator UI exposes Phase 5 navigation and workflow", () => {
+  for (const label of ["Dashboard", "Projects", "Project Generator", "Create Project UI", "Generate Project", "Phase 5"]) {
     assert.match(page, new RegExp(label));
   }
 });
@@ -38,10 +38,27 @@ test("git and CI preview exposes generated integration outputs", () => {
     ".github/workflows/ci.yml",
     "scripts/init-git.sh"
   ]) {
-    assert.match(page, new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.ok(page.includes(label));
   }
 });
 
 test("non-MVP navigation still uses Coming Soon placeholder text", () => {
   assert.match(page, /Coming Soon/);
+});
+
+
+test("observability preview exposes generated baseline outputs", () => {
+  for (const label of [
+    "Observability Baseline Preview",
+    "Structured JSON logging",
+    "OpenTelemetry baseline",
+    "Health readiness liveness endpoints",
+    "request_id",
+    "trace_id",
+    "apps/api/src/observability.ts",
+    "apps/api/src/health.ts",
+    "docs/observability.md"
+  ]) {
+    assert.ok(page.includes(label));
+  }
 });

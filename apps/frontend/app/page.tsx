@@ -3,7 +3,7 @@ const navItems = ["Dashboard", "Projects", "Templates", "Observability", "Settin
 const statusItems = [
   { label: "Frontend", value: "Ready" },
   { label: "Backend", value: "Ready" },
-  { label: "Generator", value: "Phase 4" },
+  { label: "Generator", value: "Phase 5" },
   { label: "Local Services", value: "Compose" }
 ];
 
@@ -31,7 +31,10 @@ const generatedStructure = [
   "my-service/docs/api-contract.md",
   "my-service/.gitignore",
   "my-service/.github/workflows/ci.yml",
-  "my-service/scripts/init-git.sh"
+  "my-service/scripts/init-git.sh",
+  "my-service/apps/api/src/observability.ts",
+  "my-service/apps/api/src/health.ts",
+  "my-service/docs/observability.md"
 ];
 
 export default function Home() {
@@ -173,6 +176,18 @@ export default function Home() {
                 <div className="rounded bg-background p-4 text-sm">Git initialization script</div>
                 <div className="rounded bg-background p-4 text-sm">Initial commit generation</div>
                 <div className="rounded bg-background p-4 text-sm">CI workflow template</div>
+              </div>
+            </section>
+
+            <section className="rounded border border-border bg-panel p-5 lg:col-span-2">
+              <h2 className="text-lg font-semibold">Observability Baseline Preview</h2>
+              <p className="mt-3 text-sm leading-6 text-muted">
+                Phase 5 adds structured logging, request_id, trace_id, health checks, readiness/liveness endpoints, and OpenTelemetry starter output.
+              </p>
+              <div className="mt-4 grid gap-4 md:grid-cols-3">
+                <div className="rounded bg-background p-4 text-sm">Structured JSON logging</div>
+                <div className="rounded bg-background p-4 text-sm">OpenTelemetry baseline</div>
+                <div className="rounded bg-background p-4 text-sm">Health readiness liveness endpoints</div>
               </div>
             </section>
           </div>
