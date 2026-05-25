@@ -10,32 +10,33 @@ test("quickstart edition is a separate one click project bootstrap UI", () => {
     "GoneOps QuickStart Edition",
     "One Click Project Bootstrap",
     "Select stack. Click generate. Run locally.",
-    "Generate QuickStart Project",
+    "Generate Real Runnable Project",
     "Advanced workspace"
   ]) {
     assert.ok(quickstart.includes(label));
   }
 });
 
-test("quickstart focuses only on stack selection and runnable local project outputs", () => {
-  for (const label of [
-    "Node HTTP API",
-    "Node Service API",
-    "Node Worker API",
-    "README.md",
-    "package.json",
-    ".env.example",
-    "src/server.js",
-    "Dockerfile",
-    "docker-compose.yml",
-    "curl http://localhost:$PORT/hello"
-  ]) {
+test("quickstart exposes supported MVP stack components", () => {
+  for (const label of ["NextJS", "React", "Vue", "Static HTML", "Go Fiber", "NestJS", "ExpressJS", "FastAPI", "PostgreSQL", "MySQL", "MongoDB", "Redis", "RabbitMQ", "MinIO"]) {
     assert.ok(quickstart.includes(label));
   }
 });
 
-test("quickstart validation promises build run docker compose hello endpoint and env ports", () => {
-  for (const label of ["Builds successfully", "Runs locally", "Docker Compose supported", "Hello World endpoint", "Ports from .env"]) {
+test("quickstart result panel shows real runnable project output fields", () => {
+  for (const label of ["Project Name", "Stack Summary", "Generated Services", "Container Status", "Ports", "URLs", "Credentials", "Swagger URL", "API Examples", "Docker Commands"]) {
+    assert.ok(quickstart.includes(label));
+  }
+});
+
+test("quickstart realtime generation logs cover build and validation", () => {
+  for (const label of ["[✓] Generate backend", "[✓] Generate Swagger", "[✓] Generate PostgreSQL config", "[✓] Generate Redis config", "[✓] Generate RabbitMQ workflow", "[✓] Generate Docker Compose", "[✓] Build containers", "[✓] Run health checks", "[✓] Validate API", "[✓] Validate Swagger"]) {
+    assert.ok(quickstart.includes(label));
+  }
+});
+
+test("quickstart includes generated files and env-driven commands", () => {
+  for (const label of ["README.md", "docker-compose.yml", ".env.example", "Makefile", "openapi.yaml", "backend/Dockerfile", "frontend/Dockerfile", "database/seed.sql", "scripts/healthcheck.sh", "docker compose up --build", "${API_APP_PORT}"]) {
     assert.ok(quickstart.includes(label));
   }
 });

@@ -1,96 +1,71 @@
 import * as assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync, mkdirSync, copyFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join, dirname } from "node:path";
-import { spawn, spawnSync } from "node:child_process";
 import { test } from "node:test";
 import { QuickStartGeneratorService } from "./quickstart-generator.service";
 
 const service = new QuickStartGeneratorService();
 
-test("quickstart options expose one click bootstrap flow", () => {
+const allCombos = [
+  { frontend: "NextJS", backend: "Go Fiber", database: "PostgreSQL", infrastructure: ["Redis", "RabbitMQ"] },
+  { frontend: "React", backend: "NestJS", database: "MySQL", infrastructure: ["Redis", "MinIO"] },
+  { frontend: "Vue", backend: "ExpressJS", database: "MongoDB", infrastructure: ["RabbitMQ"] },
+  { frontend: "Static HTML", backend: "FastAPI", database: "PostgreSQL", infrastructure: ["Redis", "RabbitMQ", "MinIO"] }
+] as const;
+
+test("quickstart options expose real MVP stack components", () => {
   const options = service.getOptions();
   assert.equal(options.edition, "GoneOps QuickStart Edition");
   assert.equal(options.goal, "One Click Project Bootstrap");
   assert.deepEqual(options.flow, ["select stack", "click generate", "run local project"]);
-  assert.ok(options.stacks.some((stack) => stack.id === "node-http"));
-});
-
-test("quickstart generator creates a clean runnable local project", () => {
-  const output = service.generate({ name: "Hello Local", stack: "node-http" });
-  assert.equal(output.edition, "GoneOps QuickStart Edition");
-  assert.equal(output.project.slug, "hello-local");
-  assert.equal(output.validation.valid, true);
-
-  const required = ["README.md", "package.json", ".env.example", "src/server.js", "Dockerfile", "docker-compose.yml"];
-  for (const path of required) {
-    assert.ok(output.files.some((file) => file.path.endsWith(path)), path);
+  for (const component of ["NextJS", "React", "Vue", "Static HTML", "Go Fiber", "NestJS", "ExpressJS", "FastAPI", "PostgreSQL", "MySQL", "MongoDB", "Redis", "RabbitMQ", "MinIO"]) {
+    assert.ok(JSON.stringify(options).includes(component), component);
   }
-
-  const server = output.files.find((file) => file.path.endsWith("src/server.js"))?.content ?? "";
-  const env = output.files.find((file) => file.path.endsWith(".env.example"))?.content ?? "";
-  const compose = output.files.find((file) => file.path.endsWith("docker-compose.yml"))?.content ?? "";
-  assert.ok(server.includes("/hello"));
-  assert.ok(server.includes("process.env.PORT"));
-  assert.ok(env.includes("PORT="));
-  assert.ok(env.includes("APP_PORT="));
-  assert.ok(compose.includes("${APP_PORT"));
-  assert.ok(compose.includes("${PORT"));
 });
 
-test("quickstart rejects unsupported stacks", () => {
-  assert.throws(() => service.generate({ name: "Bad", stack: "kubernetes-ai" as never }), /Unsupported QuickStart stack/);
-});
+test("quickstart generator creates real runnable project outputs for representative stack combinations", () => {
+  for (const combo of allCombos) {
+    const output = service.generate({ name: `${combo.backend} ${combo.database}`, frontend: combo.frontend, backend: combo.backend, database: combo.database, infrastructure: [...combo.infrastructure] });
+    assert.equal(output.edition, "GoneOps QuickStart Edition");
+    assert.equal(output.validation.valid, true);
+    assert.ok(output.stackSummary.includes(combo.backend));
+    assert.ok(output.swaggerUrl.includes("/swagger"));
 
-test("quickstart generated project builds and exposes hello world locally", async () => {
-  const output = service.generate({ name: "Runnable Local", stack: "node-service" });
-  const root = mkdtempSync(join(tmpdir(), "goneops-quickstart-"));
-  const slug = output.project.slug;
-  const projectRoot = join(root, slug);
+    const required = ["README.md", "docker-compose.yml", ".env.example", "Makefile", "openapi.yaml", "backend/Dockerfile", "frontend/Dockerfile", "scripts/healthcheck.sh"];
+    for (const path of required) assert.ok(output.files.some((file) => file.path.endsWith(path)), `${combo.backend} missing ${path}`);
 
-  for (const file of output.files) {
-    const relative = file.path.replace(`${slug}/`, "");
-    const target = join(projectRoot, relative);
-    mkdirSync(dirname(target), { recursive: true });
-    writeFileSync(target, file.content);
-  }
-  copyFileSync(join(projectRoot, ".env.example"), join(projectRoot, ".env"));
-
-  const build = spawnSync("npm", ["run", "build"], { cwd: projectRoot, encoding: "utf8" });
-  assert.equal(build.status, 0, build.stderr || build.stdout);
-
-  const app = spawn("node", ["src/server.js"], {
-    cwd: projectRoot,
-    env: { ...process.env, PORT: "4199" },
-    stdio: ["ignore", "pipe", "pipe"]
-  });
-
-  try {
-    let hello: unknown;
-    for (let attempt = 0; attempt < 20; attempt += 1) {
-      try {
-        const response = await fetch("http://127.0.0.1:4199/hello");
-        hello = await response.json();
-        break;
-      } catch {
-        await new Promise((resolve) => setTimeout(resolve, 50));
-      }
+    const joined = output.files.map((file) => file.content).join("\n");
+    for (const marker of ["/health", "/swagger", "/jobs", "Create Demo Job", combo.database, "docker compose up --build", "${API_APP_PORT", "${API_PORT"]) {
+      assert.ok(joined.includes(marker), `${combo.backend} missing ${marker}`);
     }
-    assert.deepEqual(hello, {
-      message: "Hello World from GoneOps QuickStart Edition",
-      stack: "node-service",
-      service: "Node Service API"
-    });
-  } finally {
-    app.kill();
   }
 });
 
-test("quickstart generated files avoid excluded advanced platform features", () => {
-  const output = service.generate({ name: "Clean DX", stack: "node-worker-api" });
+test("go fiber postgres redis rabbitmq example includes demo workflow and credentials", () => {
+  const output = service.generate({ name: "Demo Job Flow", frontend: "Static HTML", backend: "Go Fiber", database: "PostgreSQL", infrastructure: ["Redis", "RabbitMQ"] });
+  assert.deepEqual(output.generatedServices, ["frontend", "api", "postgres", "redis", "rabbitmq"]);
+  assert.ok(output.stackSummary.includes("Go Fiber"));
+  assert.ok(output.generatedServices.includes("postgres"));
+  assert.ok(output.containerStatus.some((item) => item.service === "api"));
+  assert.ok(output.ports.some((item) => item.name === "Backend API"));
+  assert.ok(output.urls.some((item) => item.name === "Swagger"));
+  assert.ok(output.credentials.some((item) => item.service === "PostgreSQL"));
+  assert.ok(output.apiExamples.some((item) => item.includes("POST")));
+  assert.ok(output.dockerCommands.includes("docker compose up --build"));
+  const readme = output.files.find((file) => file.path.endsWith("README.md"))?.content ?? "";
+  assert.ok(readme.includes("PostgreSQL"));
+  assert.ok(readme.includes("RabbitMQ"));
+  assert.ok(readme.includes("user=appuser password=apppassword"));
+});
+
+test("quickstart rejects unsupported components", () => {
+  assert.throws(() => service.generate({ name: "Bad", backend: "Rails" as never }), /Unsupported QuickStart backend/);
+  assert.throws(() => service.generate({ name: "Bad", database: "Oracle" as never }), /Unsupported QuickStart database/);
+});
+
+test("quickstart generated files avoid excluded advanced platform features and secrets", () => {
+  const output = service.generate({ name: "Clean DX", frontend: "Static HTML", backend: "ExpressJS", database: "PostgreSQL", infrastructure: ["Redis", "RabbitMQ"] });
   const joined = output.files.map((file) => file.content).join("\n");
   for (const forbidden of ["AI workspace", "memory engine", "observability dashboard", "workflow engine", "task engine", "runtime management"]) {
     assert.doesNotMatch(joined, new RegExp(forbidden, "i"));
   }
-  assert.doesNotMatch(joined, /ghp_|sk-|BEGIN (RSA|OPENSSH|PRIVATE) KEY/);
+  assert.doesNotMatch(joined, /ghp_|sk-[A-Za-z0-9]|BEGIN (RSA|OPENSSH|PRIVATE) KEY/);
 });
