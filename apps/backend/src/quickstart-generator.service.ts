@@ -96,10 +96,10 @@ export class QuickStartGeneratorService {
     const includeHelloWorld = request.includeHelloWorld ?? true;
 
     if (includeReadme) files.push({ path: `${slug}/README.md`, content: this.renderReadme(name, slug, selection, ports) });
-    files.push({ path: `${slug}/.env.example`, content: this.renderEnvExample(selection) });
+    files.push({ path: `${slug}/.env.example`, content: this.renderEnvExample(selection, slug) });
     files.push({ path: `${slug}/.gitignore`, content: this.renderGitignore() });
     files.push({ path: `${slug}/Makefile`, content: this.renderMakefile() });
-    if (includeDockerCompose) files.push({ path: `${slug}/docker-compose.yml`, content: this.renderDockerCompose(selection) });
+    if (includeDockerCompose) files.push({ path: `${slug}/docker-compose.yml`, content: this.renderDockerCompose(selection, slug) });
     if (includeCi) files.push({ path: `${slug}/.woodpecker.yml`, content: this.renderWoodpeckerPipeline() });
     files.push({ path: `${slug}/scripts/local-cicd.sh`, content: this.renderLocalCicdScript() });
     files.push({ path: `${slug}/scripts/start-sandbox.sh`, content: this.renderStartSandboxScript(slug) });
@@ -126,13 +126,17 @@ export class QuickStartGeneratorService {
       generatedServices: this.generatedServices(selection),
       ports,
       urls: this.urls(ports).concat([{ name: "Sandbox", url: `/quickstart/projects/${slug}/sandbox` }]),
-      credentials: this.credentials(selection),
+      credentials: this.credentials(selection, slug),
       swaggerUrl: "http://localhost:${API_APP_PORT}/swagger",
       apiExamples: [
         "curl http://localhost:${API_APP_PORT}/hello",
         "curl http://localhost:${API_APP_PORT}/health",
-        "curl http://localhost:${API_APP_PORT}/jobs",
-        "curl -X POST http://localhost:${API_APP_PORT}/jobs -H 'content-type: application/json' -d '{\"title\":\"Create Demo Job\"}'"
+        "curl http://localhost:${API_APP_PORT}/users",
+        "curl -X POST http://localhost:${API_APP_PORT}/users -H 'content-type: application/json' -d '{\"name\":\"Demo User\",\"email\":\"demo@example.local\"}'",
+        "curl -X POST http://localhost:${API_APP_PORT}/redis/set -H 'content-type: application/json' -d '{\"key\":\"quickstart:demo\",\"value\":\"hello\"}'",
+        "curl 'http://localhost:${API_APP_PORT}/redis/get?key=quickstart:demo'",
+        "curl -X POST http://localhost:${API_APP_PORT}/rabbitmq/publish -H 'content-type: application/json' -d '{\"message\":\"hello queue\"}'",
+        "curl -X POST http://localhost:${API_APP_PORT}/rabbitmq/consume",
       ],
       dockerCommands: ["cp .env.example .env", "docker compose config --quiet", "docker compose up -d --build", "docker compose ps", "docker compose logs", "docker compose down -v"],
       generationLogs: [
@@ -414,6 +418,10 @@ export class QuickStartGeneratorService {
     return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 64);
   }
 
+  private envName(slug: string) {
+    return slug.replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  }
+
   private servicePorts(selection: StackSelection): ServicePort[] {
     const ports: ServicePort[] = [
       { name: "Frontend", internal: "${FRONTEND_PORT}", external: "${FRONTEND_APP_PORT}", url: "http://localhost:${FRONTEND_APP_PORT}" },
@@ -440,21 +448,24 @@ export class QuickStartGeneratorService {
     return { PostgreSQL: "postgres", MySQL: "mysql", MongoDB: "mongo", None: "" }[database];
   }
 
-  private credentials(selection: StackSelection) {
+  private credentials(selection: StackSelection, slug = "quickstart-app") {
+    const envName = this.envName(slug);
     const credentials = [
       { service: "Backend", username: "n/a", password: "n/a", note: "API has no auth in the local demo" }
     ];
-    if (selection.database === "PostgreSQL") credentials.push({ service: "PostgreSQL", username: "appuser", password: "apppassword", note: "database=appdb host=postgres port=5432" });
-    if (selection.database === "MySQL") credentials.push({ service: "MySQL", username: "appuser", password: "apppassword", note: "database=appdb host=mysql port=3306" });
-    if (selection.database === "MongoDB") credentials.push({ service: "MongoDB", username: "appuser", password: "apppassword", note: "database=appdb host=mongo port=27017" });
-    if (selection.infrastructure.includes("RabbitMQ")) credentials.push({ service: "RabbitMQ", username: "guest", password: "guest", note: "management UI enabled locally" });
-    if (selection.infrastructure.includes("MinIO")) credentials.push({ service: "MinIO", username: "minioadmin", password: "minioadmin", note: "local demo credentials only" });
+    if (selection.database === "PostgreSQL") credentials.push({ service: "PostgreSQL", username: `${envName}_user`, password: "apppassword", note: `database=${envName}_db host=postgres port=5432` });
+    if (selection.database === "MySQL") credentials.push({ service: "MySQL", username: `${envName}_user`, password: "apppassword", note: `database=${envName}_db host=mysql port=3306` });
+    if (selection.database === "MongoDB") credentials.push({ service: "MongoDB", username: `${envName}_user`, password: "apppassword", note: `database=${envName}_db host=mongo port=27017` });
+    if (selection.infrastructure.includes("RabbitMQ")) credentials.push({ service: "RabbitMQ", username: "guest", password: "guest", note: `management UI enabled locally in ${slug}-rabbitmq` });
+    if (selection.infrastructure.includes("MinIO")) credentials.push({ service: "MinIO", username: "minioadmin", password: "minioadmin", note: `local demo credentials only in ${slug}-minio` });
     return credentials;
   }
 
-  private renderEnvExample(selection: StackSelection) {
+  private renderEnvExample(selection: StackSelection, slug: string) {
+    const envName = this.envName(slug);
     const lines = [
       "NODE_ENV=development",
+      `PROJECT_SLUG=${slug}`,
       "FRONTEND_PORT=3000",
       "FRONTEND_APP_PORT=3000",
       "API_PORT=8080",
@@ -468,12 +479,13 @@ export class QuickStartGeneratorService {
       "RABBITMQ_UI_APP_PORT=15672",
       "MINIO_APP_PORT=9000",
       "MINIO_CONSOLE_APP_PORT=9001",
-      "DB_NAME=appdb",
-      "DB_USER=appuser",
+      `DB_NAME=${envName}_db`,
+      `DB_USER=${envName}_user`,
       "DB_PASSWORD=apppassword",
       `DB_TYPE=${selection.database}`,
       "REDIS_URL=redis://redis:6379",
       "RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672",
+      "RABBITMQ_QUEUE=quickstart_runtime_events",
       "MINIO_ENDPOINT=minio:9000",
       "MINIO_ROOT_USER=minioadmin",
       "MINIO_ROOT_PASSWORD=minioadmin"
@@ -489,7 +501,7 @@ export class QuickStartGeneratorService {
   private renderHealthcheckScript() { return ["#!/usr/bin/env sh", "set -eu", "wget -qO- http://127.0.0.1:${API_PORT:-8080}/health >/dev/null", ""].join("\n"); }
 
   private renderOpenApi(name: string) {
-    return ["openapi: 3.0.3", "info:", `  title: ${name} API`, "  version: 0.1.0", "paths:", "  /health:", "    get:", "      responses:", "        '200': { description: OK }", "  /jobs:", "    get:", "      responses:", "        '200': { description: Job list }", "    post:", "      responses:", "        '201': { description: Created job }", "  /jobs/{id}:", "    get:", "      parameters:", "        - in: path", "          name: id", "          required: true", "          schema: { type: string }", "      responses:", "        '200': { description: Job }", ""].join("\n");
+    return ["openapi: 3.0.3", "info:", `  title: ${name} API`, "  version: 0.1.0", "paths:", "  /health:", "    get:", "      responses:", "        '200': { description: OK }", "  /users:", "    get:", "      responses:", "        '200': { description: User list from database }", "    post:", "      responses:", "        '201': { description: Created database user }", "  /users/{id}:", "    delete:", "      parameters:", "        - in: path", "          name: id", "          required: true", "          schema: { type: string }", "      responses:", "        '200': { description: Deleted database user }", "  /redis/set:", "    post:", "      responses:", "        '200': { description: Value stored in Redis }", "  /redis/get:", "    get:", "      responses:", "        '200': { description: Value retrieved from Redis }", "  /rabbitmq/publish:", "    post:", "      responses:", "        '200': { description: Message published to RabbitMQ }", "  /rabbitmq/consume:", "    post:", "      responses:", "        '200': { description: Message consumed from RabbitMQ }", "  /rabbitmq/logs:", "    get:", "      responses:", "        '200': { description: RabbitMQ publish/consume logs }", "  /jobs:", "    get:", "      responses:", "        '200': { description: Job list }", "    post:", "      responses:", "        '201': { description: Created job }", "  /jobs/{id}:", "    get:", "      parameters:", "        - in: path", "          name: id", "          required: true", "          schema: { type: string }", "      responses:", "        '200': { description: Job }", ""].join("\n");
   }
 
   private renderBackendFiles(selection: StackSelection, includeHelloWorld: boolean): QuickStartGeneratedFile[] {
@@ -614,13 +626,15 @@ const port = process.env.API_PORT;
 if (!port) { throw new Error("API_PORT must be set through .env"); }
 const jobs = new Map([["demo-1", { id: "demo-1", title: "Seeded demo job", status: "seeded" }]]);
 const app = express();
-app.use((_, res, next) => { res.setHeader("access-control-allow-origin", "*"); res.setHeader("access-control-allow-methods", "GET,POST,OPTIONS"); res.setHeader("access-control-allow-headers", "content-type"); next(); });
+app.use((_, res, next) => { res.setHeader("access-control-allow-origin", "*"); res.setHeader("access-control-allow-methods", "GET,POST,DELETE,OPTIONS"); res.setHeader("access-control-allow-headers", "content-type"); next(); });
 app.options("*", (_, res) => res.sendStatus(204));
 app.use(express.json());
 app.use("/swagger", swaggerUi.serve, swaggerUi.setup({ openapi: "3.0.3", info: { title: "QuickStart API", version: "0.1.0" }, paths: {} }));
 
 const mysqlPool = ${usesMySql ? `mysql.createPool({ host: "mysql", port: 3306, user: process.env.DB_USER, password: process.env.DB_PASSWORD, database: process.env.DB_NAME, waitForConnections: true, connectionLimit: 4 })` : "null"};
 const redisClient = ${usesRedis ? "createClient({ url: process.env.REDIS_URL })" : "null"};
+const rabbitLogs = [];
+const rabbitQueue = process.env.RABBITMQ_QUEUE || "quickstart_runtime_events";
 if (redisClient) redisClient.on("error", (error) => console.error("redis error", error.message));
 
 async function retry(label, fn, attempts = 40) {
@@ -635,6 +649,7 @@ async function init() {
   if (mysqlPool) {
     await retry("mysql connection", () => mysqlPool.query("SELECT 1"));
     await mysqlPool.query("CREATE TABLE IF NOT EXISTS jobs (id VARCHAR(64) PRIMARY KEY, title TEXT NOT NULL, status VARCHAR(32) NOT NULL)");
+    await mysqlPool.query("CREATE TABLE IF NOT EXISTS users (id BIGINT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(255) NOT NULL, email VARCHAR(255) NOT NULL UNIQUE, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)");
     await mysqlPool.query("INSERT IGNORE INTO jobs (id, title, status) VALUES ('demo-1', 'Seeded demo job', 'seeded')");
   }
   if (redisClient) await retry("redis connection", () => redisClient.connect());
@@ -651,9 +666,11 @@ async function publishRabbit(body) {
   if (!${usesRabbit}) return null;
   const connection = await amqp.connect(process.env.RABBITMQ_URL);
   const channel = await connection.createChannel();
-  const queue = "jobs";
+  const queue = rabbitQueue;
   await channel.assertQueue(queue, { durable: false });
   await channel.sendToQueue(queue, Buffer.from(body));
+  const log = { action: "publish", queue, body, at: new Date().toISOString() };
+  rabbitLogs.push(log);
   await channel.close();
   await connection.close();
   return body;
@@ -662,8 +679,10 @@ async function consumeRabbit() {
   if (!${usesRabbit}) return null;
   const connection = await amqp.connect(process.env.RABBITMQ_URL);
   const channel = await connection.createChannel();
-  await channel.assertQueue("jobs", { durable: false });
-  const message = await channel.get("jobs", { noAck: true });
+  await channel.assertQueue(rabbitQueue, { durable: false });
+  const message = await channel.get(rabbitQueue, { noAck: true });
+  const body = message ? message.content.toString() : null;
+  rabbitLogs.push({ action: "consume", queue: rabbitQueue, body, at: new Date().toISOString() });
   await channel.close();
   await connection.close();
   return message ? message.content.toString() : null;
@@ -677,6 +696,47 @@ ${includeHelloWorld ? `app.get("/hello", (_req, res) => res.json({ message: "Hel
   const ok = Boolean(database && redis && rabbitmq);
   res.status(ok ? 200 : 503).json({ status: ok ? "ok" : "degraded", backend: "${label}", database, redis, rabbitmq });
 });
+app.post("/users", async (req, res) => {
+  const name = req.body?.name || "Demo User";
+  const email = req.body?.email || "demo-" + Date.now() + "@example.local";
+  if (mysqlPool) {
+    const [result] = await mysqlPool.query("INSERT INTO users (name, email) VALUES (?, ?)", [name, email]);
+    const [rows] = await mysqlPool.query("SELECT id, name, email, created_at FROM users WHERE id=?", [result.insertId]);
+    return res.status(201).json(rows[0]);
+  }
+  return res.status(501).json({ error: "database_not_configured" });
+});
+app.get("/users", async (_req, res) => {
+  if (mysqlPool) { const [rows] = await mysqlPool.query("SELECT id, name, email, created_at FROM users ORDER BY id"); return res.json(rows); }
+  return res.status(501).json({ error: "database_not_configured" });
+});
+app.delete("/users/:id", async (req, res) => {
+  if (mysqlPool) { const [result] = await mysqlPool.query("DELETE FROM users WHERE id=?", [req.params.id]); return res.json({ deleted: result.affectedRows > 0, id: req.params.id }); }
+  return res.status(501).json({ error: "database_not_configured" });
+});
+app.post("/redis/set", async (req, res) => {
+  if (!redisClient) return res.status(501).json({ error: "redis_not_configured" });
+  const key = req.body?.key || "quickstart:demo";
+  const value = req.body?.value || "stored from live UI";
+  await redisClient.set(key, value);
+  res.json({ key, value, stored: true });
+});
+app.get("/redis/get", async (req, res) => {
+  if (!redisClient) return res.status(501).json({ error: "redis_not_configured" });
+  const key = req.query?.key || "quickstart:demo";
+  const value = await redisClient.get(key);
+  res.json({ key, value });
+});
+app.post("/rabbitmq/publish", async (req, res) => {
+  const message = req.body?.message || "quickstart message from live UI";
+  const published = await publishRabbit(message);
+  res.json({ queue: rabbitQueue, message: published, published: Boolean(published) });
+});
+app.post("/rabbitmq/consume", async (_req, res) => {
+  const message = await consumeRabbit();
+  res.json({ queue: rabbitQueue, message, consumed: message !== null, logs: rabbitLogs.slice(-20) });
+});
+app.get("/rabbitmq/logs", (_req, res) => res.json({ queue: rabbitQueue, logs: rabbitLogs.slice(-50) }));
 app.get("/jobs", async (_req, res) => {
   if (mysqlPool) { const [rows] = await mysqlPool.query("SELECT id, title, status FROM jobs ORDER BY id"); return res.json(rows); }
   return res.json(Array.from(jobs.values()));
@@ -713,7 +773,7 @@ app.listen(Number(port), () => console.log("api listening on " + port));
   }
 
   private renderFrontendFiles(selection: StackSelection): QuickStartGeneratedFile[] {
-    const app = `<!doctype html><html><head><meta charset="utf-8"><title>QuickStart Demo</title><style>body{font-family:Inter,system-ui;margin:0;background:#f7f7f7;color:#111}.app{max-width:980px;margin:32px auto;padding:24px}.hero,.panel{background:white;border:1px solid #e5e5e5;border-radius:24px;padding:24px;box-shadow:0 20px 50px rgba(0,0,0,.06)}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-top:16px}button,input{border-radius:12px;padding:12px 14px;border:1px solid #ddd}button{background:#000;color:white;border:0;font-weight:700;cursor:pointer}.secondary{background:#0ea5e9}.ok{color:#047857}.bad{color:#b91c1c}pre{white-space:pre-wrap;background:#080808;color:#ededed;border-radius:16px;padding:16px;max-height:300px;overflow:auto}</style></head><body><main class="app"><section class="hero"><div style="font-size:12px;text-transform:uppercase;letter-spacing:.18em;color:#777">Generated demo application</div><h1>${selection.frontend} Live Demo UI</h1><p>This is the real generated frontend. It calls the generated backend API, writes jobs to the database, stores latest job in Redis, and publishes/consumes RabbitMQ messages when selected.</p><div class="grid"><button onclick="loadHealth()">Check health</button><button onclick="loadJobs()">Load database jobs</button><button class="secondary" onclick="createJob()">Create job + Redis + RabbitMQ</button><button class="secondary" onclick="loadIntegrations()">Read Redis / consume RabbitMQ</button></div></section><section class="panel" style="margin-top:16px"><label>Job title</label><input id="title" style="width:100%;margin-top:8px" value="Demo job from live sandbox UI"><pre id="out">Ready. API base: <span id="api"></span></pre></section></main><script>const API_PORT="__API_APP_PORT__"; const api=location.protocol+'//'+location.hostname+':'+API_PORT; document.getElementById('api').textContent=api; async function show(label,promise){const out=document.getElementById('out'); out.textContent=label+'...'; try{const r=await promise; const data=await r.json(); out.textContent=label+'\n'+JSON.stringify(data,null,2)}catch(e){out.textContent=label+' failed: '+e.message}} function loadHealth(){return show('Health + service connectivity', fetch(api+'/health'))} function loadJobs(){return show('Database CRUD: list jobs', fetch(api+'/jobs'))} function createJob(){return show('Create job: database insert + Redis set + RabbitMQ publish', fetch(api+'/jobs',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({title:document.getElementById('title').value})}))} function loadIntegrations(){return show('Redis GET + RabbitMQ consume', fetch(api+'/integrations'))} loadHealth(); loadJobs();</script></body></html>`;
+    const app = `<!doctype html><html><head><meta charset="utf-8"><title>QuickStart Runtime Sandbox</title><style>body{font-family:Inter,system-ui;margin:0;background:#f7f7f7;color:#111}.app{max-width:1080px;margin:32px auto;padding:24px}.hero,.panel{background:white;border:1px solid #e5e5e5;border-radius:24px;padding:24px;box-shadow:0 20px 50px rgba(0,0,0,.06)}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;margin-top:16px}.row{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin:10px 0}button,input{border-radius:12px;padding:12px 14px;border:1px solid #ddd}button{background:#000;color:white;border:0;font-weight:700;cursor:pointer}.secondary{background:#0ea5e9}.danger{background:#dc2626}.ok{color:#047857}.bad{color:#b91c1c}pre{white-space:pre-wrap;background:#080808;color:#ededed;border-radius:16px;padding:16px;max-height:360px;overflow:auto}</style></head><body><main class="app"><section class="hero"><div style="font-size:12px;text-transform:uppercase;letter-spacing:.18em;color:#777">Generated real runtime sandbox</div><h1>${selection.frontend} Live Operations UI</h1><p>Every control calls the generated backend API and exercises real MySQL, Redis, and RabbitMQ paths when selected. Live results are rendered from fetch responses.</p><div class="grid"><button onclick="loadHealth()">Health Check</button><button onclick="createUser()">Create User</button><button onclick="listUsers()">List Users</button><button class="danger" onclick="deleteUser()">Delete User</button><button class="secondary" onclick="redisSet()">Redis SET</button><button class="secondary" onclick="redisGet()">Redis GET</button><button class="secondary" onclick="rabbitPublish()">RabbitMQ Publish</button><button class="secondary" onclick="rabbitConsume()">RabbitMQ Consume/Logs</button></div></section><section class="panel" style="margin-top:16px"><div class="row"><input id="userName" value="Demo User"><input id="userEmail" value="demo@example.local"><input id="deleteId" placeholder="User ID to delete"></div><div class="row"><input id="redisKey" value="quickstart:demo"><input id="redisValue" value="Stored from live sandbox UI"><input id="rabbitMessage" value="RabbitMQ message from live sandbox UI"></div><pre id="out">Ready. API base: <span id="api"></span></pre></section></main><script>const API_PORT="__API_APP_PORT__"; const api=location.protocol+'//'+location.hostname+':'+API_PORT; document.getElementById('api').textContent=api; async function request(path,opts){const res=await fetch(api+path,opts); const text=await res.text(); let json; try{json=JSON.parse(text)}catch{json={raw:text}} if(!res.ok) throw new Error(res.status+' '+JSON.stringify(json)); return json} async function show(label,promise){const out=document.getElementById('out'); out.textContent=label+'...'; try{out.textContent=label+'\\n'+JSON.stringify(await promise,null,2)}catch(e){out.textContent=label+' failed\\n'+e.message}} function loadHealth(){show('GET /health',request('/health'))} function createUser(){show('POST /users',request('/users',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name:document.getElementById('userName').value,email:document.getElementById('userEmail').value.replace('@','+'+Date.now()+'@')})}))} function listUsers(){show('GET /users',request('/users'))} function deleteUser(){show('DELETE /users/:id',request('/users/'+encodeURIComponent(document.getElementById('deleteId').value),{method:'DELETE'}))} function redisSet(){show('POST /redis/set',request('/redis/set',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({key:document.getElementById('redisKey').value,value:document.getElementById('redisValue').value})}))} function redisGet(){show('GET /redis/get',request('/redis/get?key='+encodeURIComponent(document.getElementById('redisKey').value)))} function rabbitPublish(){show('POST /rabbitmq/publish',request('/rabbitmq/publish',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({message:document.getElementById('rabbitMessage').value})}))} function rabbitConsume(){show('POST /rabbitmq/consume + logs',request('/rabbitmq/consume',{method:'POST'}).then(async r=>({consume:r,logs:await request('/rabbitmq/logs')})))}</script></body></html>`;
     return [
       { path: "frontend/index.html", content: app },
       { path: "frontend/server.mjs", content: "import { createServer } from 'node:http';\nimport { readFileSync } from 'node:fs';\nconst port = process.env.FRONTEND_PORT;\nconst apiAppPort = process.env.API_APP_PORT;\nif (!port) throw new Error('FRONTEND_PORT must be set through .env');\nif (!apiAppPort) throw new Error('API_APP_PORT must be set through .env');\nconst html = readFileSync(new URL('./index.html', import.meta.url), 'utf8').replaceAll('__API_APP_PORT__', apiAppPort);\ncreateServer((_req, res) => { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); res.end(html); }).listen(Number(port), '0.0.0.0', () => console.log('frontend listening on ' + port));\n" },
@@ -723,14 +783,14 @@ app.listen(Number(port), () => console.log("api listening on " + port));
 
   private renderSeedFiles(selection: StackSelection): QuickStartGeneratedFile[] {
     if (selection.database === "PostgreSQL") return [{ path: "database/seed.sql", content: "CREATE TABLE IF NOT EXISTS jobs (id TEXT PRIMARY KEY, title TEXT NOT NULL, status TEXT NOT NULL);\nINSERT INTO jobs (id, title, status) VALUES ('demo-1', 'Seeded demo job', 'seeded') ON CONFLICT (id) DO NOTHING;\n" }];
-    if (selection.database === "MySQL") return [{ path: "database/seed.sql", content: "CREATE TABLE IF NOT EXISTS jobs (id VARCHAR(64) PRIMARY KEY, title TEXT NOT NULL, status VARCHAR(32) NOT NULL);\nINSERT IGNORE INTO jobs (id, title, status) VALUES ('demo-1', 'Seeded demo job', 'seeded');\n" }];
+    if (selection.database === "MySQL") return [{ path: "database/seed.sql", content: "CREATE TABLE IF NOT EXISTS jobs (id VARCHAR(64) PRIMARY KEY, title TEXT NOT NULL, status VARCHAR(32) NOT NULL);\nCREATE TABLE IF NOT EXISTS users (id BIGINT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(255) NOT NULL, email VARCHAR(255) NOT NULL UNIQUE, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);\nINSERT IGNORE INTO jobs (id, title, status) VALUES ('demo-1', 'Seeded demo job', 'seeded');\n" }];
     if (selection.database === "MongoDB") return [{ path: "database/seed.js", content: "db.jobs.updateOne({id:'demo-1'}, {$set:{id:'demo-1', title:'Seeded demo job', status:'seeded'}}, {upsert:true});\n" }];
     return [];
   }
 
-  private renderDockerCompose(selection: StackSelection) {
-    const db = this.databaseCompose(selection.database);
-    const infra = selection.infrastructure.flatMap((item) => this.infrastructureCompose(item));
+  private renderDockerCompose(selection: StackSelection, slug: string) {
+    const db = this.databaseCompose(selection.database, slug);
+    const infra = selection.infrastructure.flatMap((item) => this.infrastructureCompose(item, slug));
     const dependencies = [
       ...(selection.database === "None" ? [] : [this.databaseService(selection.database)]),
       ...selection.infrastructure.map((item) => item.toLowerCase())
@@ -738,6 +798,7 @@ app.listen(Number(port), () => console.log("api listening on " + port));
     return [
       "services:",
       "  frontend:",
+      `    container_name: ${slug}-frontend`,
       "    build: ./frontend",
       "    env_file:",
       "      - .env",
@@ -746,6 +807,7 @@ app.listen(Number(port), () => console.log("api listening on " + port));
       "    depends_on:",
       "      - api",
       "  api:",
+      `    container_name: ${slug}-api`,
       "    build: ./backend",
       "    env_file:",
       "      - .env",
@@ -763,17 +825,17 @@ app.listen(Number(port), () => console.log("api listening on " + port));
     ].join("\n");
   }
 
-  private databaseCompose(database: QuickStartDatabase) {
+  private databaseCompose(database: QuickStartDatabase, slug: string) {
     if (database === "None") return [];
-    if (database === "PostgreSQL") return ["  postgres:", "    image: postgres:16-alpine", "    environment:", "      POSTGRES_DB: ${DB_NAME}", "      POSTGRES_USER: ${DB_USER}", "      POSTGRES_PASSWORD: ${DB_PASSWORD}", "    ports:", "      - \"${POSTGRES_APP_PORT}:5432\"", "    volumes:", "      - ./database/seed.sql:/docker-entrypoint-initdb.d/seed.sql:ro"];
-    if (database === "MySQL") return ["  mysql:", "    image: mysql:8", "    environment:", "      MYSQL_DATABASE: ${DB_NAME}", "      MYSQL_USER: ${DB_USER}", "      MYSQL_PASSWORD: ${DB_PASSWORD}", "      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}", "    ports:", "      - \"${MYSQL_APP_PORT}:3306\"", "    volumes:", "      - ./database/seed.sql:/docker-entrypoint-initdb.d/seed.sql:ro"];
-    return ["  mongo:", "    image: mongo:7", "    environment:", "      MONGO_INITDB_ROOT_USERNAME: ${DB_USER}", "      MONGO_INITDB_ROOT_PASSWORD: ${DB_PASSWORD}", "      MONGO_INITDB_DATABASE: ${DB_NAME}", "    ports:", "      - \"${MONGO_APP_PORT}:27017\"", "    volumes:", "      - ./database/seed.js:/docker-entrypoint-initdb.d/seed.js:ro"];
+    if (database === "PostgreSQL") return ["  postgres:", `    container_name: ${slug}-postgres`, "    image: postgres:16-alpine", "    environment:", "      POSTGRES_DB: ${DB_NAME}", "      POSTGRES_USER: ${DB_USER}", "      POSTGRES_PASSWORD: ${DB_PASSWORD}", "    ports:", "      - \"${POSTGRES_APP_PORT}:5432\"", "    volumes:", "      - ./database/seed.sql:/docker-entrypoint-initdb.d/seed.sql:ro"];
+    if (database === "MySQL") return ["  mysql:", `    container_name: ${slug}-mysql`, "    image: mysql:8", "    environment:", "      MYSQL_DATABASE: ${DB_NAME}", "      MYSQL_USER: ${DB_USER}", "      MYSQL_PASSWORD: ${DB_PASSWORD}", "      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}", "    ports:", "      - \"${MYSQL_APP_PORT}:3306\"", "    volumes:", "      - ./database/seed.sql:/docker-entrypoint-initdb.d/seed.sql:ro"];
+    return ["  mongo:", `    container_name: ${slug}-mongo`, "    image: mongo:7", "    environment:", "      MONGO_INITDB_ROOT_USERNAME: ${DB_USER}", "      MONGO_INITDB_ROOT_PASSWORD: ${DB_PASSWORD}", "      MONGO_INITDB_DATABASE: ${DB_NAME}", "    ports:", "      - \"${MONGO_APP_PORT}:27017\"", "    volumes:", "      - ./database/seed.js:/docker-entrypoint-initdb.d/seed.js:ro"];
   }
 
-  private infrastructureCompose(item: QuickStartInfrastructure) {
-    if (item === "Redis") return ["  redis:", "    image: redis:7-alpine", "    ports:", "      - \"${REDIS_APP_PORT}:6379\""];
-    if (item === "RabbitMQ") return ["  rabbitmq:", "    image: rabbitmq:3-management-alpine", "    ports:", "      - \"${RABBITMQ_APP_PORT}:5672\"", "      - \"${RABBITMQ_UI_APP_PORT}:15672\""];
-    return ["  minio:", "    image: minio/minio:RELEASE.2024-07-16T23-46-41Z", "    command: server /data --console-address ':9001'", "    environment:", "      MINIO_ROOT_USER: ${MINIO_ROOT_USER}", "      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}", "    ports:", "      - \"${MINIO_APP_PORT}:9000\"", "      - \"${MINIO_CONSOLE_APP_PORT}:9001\""];
+  private infrastructureCompose(item: QuickStartInfrastructure, slug: string) {
+    if (item === "Redis") return ["  redis:", `    container_name: ${slug}-redis`, "    image: redis:7-alpine", "    ports:", "      - \"${REDIS_APP_PORT}:6379\""];
+    if (item === "RabbitMQ") return ["  rabbitmq:", `    container_name: ${slug}-rabbitmq`, "    image: rabbitmq:3-management-alpine", "    ports:", "      - \"${RABBITMQ_APP_PORT}:5672\"", "      - \"${RABBITMQ_UI_APP_PORT}:15672\""];
+    return ["  minio:", `    container_name: ${slug}-minio`, "    image: minio/minio:RELEASE.2024-07-16T23-46-41Z", "    command: server /data --console-address ':9001'", "    environment:", "      MINIO_ROOT_USER: ${MINIO_ROOT_USER}", "      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}", "    ports:", "      - \"${MINIO_APP_PORT}:9000\"", "      - \"${MINIO_CONSOLE_APP_PORT}:9001\""];
   }
 
   private renderReadme(name: string, slug: string, selection: StackSelection, ports: ServicePort[]) {
@@ -788,7 +850,7 @@ app.listen(Number(port), () => console.log("api listening on " + port));
 7. Start Docker Compose sandbox.
 8. Open sandbox URL: /quickstart/projects/${slug}/sandbox
 
-## Startup steps\n\n\`\`\`bash\ncp .env.example .env\ndocker compose up -d --build\n\`\`\`\n\n## Ports and URLs\n\n${ports.map((port) => `- ${port.name}: host ${port.external} -> container ${port.internal}${port.url ? ` (${port.url})` : ""}`).join("\n")}\n\nSwagger URL: http://localhost:\${API_APP_PORT}/swagger\n\n## Credentials\n\n${this.credentials(selection).map((credential) => `- ${credential.service}: user=${credential.username} password=${credential.password} ${credential.note}`).join("\n")}\n\n## API usage examples\n\n\`\`\`bash\ncurl http://localhost:\${API_APP_PORT}/health\ncurl http://localhost:\${API_APP_PORT}/jobs\ncurl -X POST http://localhost:\${API_APP_PORT}/jobs -H 'content-type: application/json' -d '{"title":"Create Demo Job"}'\n\`\`\`\n\n## Docker commands\n\n\`\`\`bash\ndocker compose ps\ndocker compose logs -f\ndocker compose down -v\n\`\`\`\n\n## Environment variables\n\nAll ports and credentials are configured through .env. Start from .env.example.\n\n## Troubleshooting\n\n- If a host port is busy, change the corresponding *_APP_PORT in .env.\n- If a service is unhealthy, run docker compose logs <service>.\n- Recreate clean state with docker compose down -v.\n\n## Project structure\n\n- backend/\n- frontend/\n- database/\n- .woodpecker.yml\n- docker-compose.yml\n- openapi.yaml\n- scripts/healthcheck.sh\n\nProject folder: ${slug}\n`;
+## Startup steps\n\n\`\`\`bash\ncp .env.example .env\ndocker compose up -d --build\n\`\`\`\n\n## Ports and URLs\n\n${ports.map((port) => `- ${port.name}: host ${port.external} -> container ${port.internal}${port.url ? ` (${port.url})` : ""}`).join("\n")}\n\nSwagger URL: http://localhost:\${API_APP_PORT}/swagger\n\n## Credentials\n\n${this.credentials(selection, slug).map((credential) => `- ${credential.service}: user=${credential.username} password=${credential.password} ${credential.note}`).join("\n")}\n\n## API usage examples\n\n\`\`\`bash\ncurl http://localhost:\${API_APP_PORT}/health\ncurl http://localhost:\${API_APP_PORT}/jobs\ncurl -X POST http://localhost:\${API_APP_PORT}/jobs -H 'content-type: application/json' -d '{"title":"Create Demo Job"}'\n\`\`\`\n\n## Docker commands\n\n\`\`\`bash\ndocker compose ps\ndocker compose logs -f\ndocker compose down -v\n\`\`\`\n\n## Environment variables\n\nAll ports and credentials are configured through .env. Start from .env.example.\n\n## Troubleshooting\n\n- If a host port is busy, change the corresponding *_APP_PORT in .env.\n- If a service is unhealthy, run docker compose logs <service>.\n- Recreate clean state with docker compose down -v.\n\n## Project structure\n\n- backend/\n- frontend/\n- database/\n- .woodpecker.yml\n- docker-compose.yml\n- openapi.yaml\n- scripts/healthcheck.sh\n\nProject folder: ${slug}\n`;
   }
 
   private validate(files: QuickStartGeneratedFile[], selection: StackSelection, options: { includeReadme: boolean; includeDockerCompose: boolean; includeCi: boolean; includeHelloWorld: boolean }) {
@@ -806,7 +868,7 @@ app.listen(Number(port), () => console.log("api listening on " + port));
     const paths = files.map((file) => file.path);
     for (const requiredPath of required) if (!paths.some((path) => path.endsWith(requiredPath))) throw new Error(`Missing QuickStart generated file: ${requiredPath}`);
     const joined = files.map((file) => file.content).join("\n");
-    const markers = ["/health", "/swagger", "/jobs", "Create Demo Job", "${API_APP_PORT", "${API_PORT", selection.database];
+    const markers = ["/health", "/swagger", "/users", "Create User", "List Users", "Delete User", "/redis/set", "/redis/get", "/rabbitmq/publish", "/rabbitmq/consume", "${API_APP_PORT", "${API_PORT", "PROJECT_SLUG", selection.database];
     if (options.includeHelloWorld) markers.push("/hello", "Hello World");
     if (options.includeDockerCompose) markers.push("docker compose up -d --build");
     if (options.includeCi) markers.push("Woodpecker", "docker compose config --quiet", "docker compose build");

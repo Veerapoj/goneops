@@ -35,7 +35,7 @@ test("quickstart generator creates real runnable project outputs for representat
     for (const path of required) assert.ok(output.files.some((file) => file.path.endsWith(path)), `${combo.backend} missing ${path}`);
 
     const joined = output.files.map((file) => file.content).join("\n");
-    for (const marker of ["/health", "/swagger", "/jobs", "Create Demo Job", combo.database, "docker compose up -d --build", "Woodpecker", "docker compose config --quiet", "${API_APP_PORT", "${API_PORT"]) {
+    for (const marker of ["/health", "/swagger", "/users", "/redis/set", "/redis/get", "/rabbitmq/publish", "/rabbitmq/consume", "Create User", "Delete User", combo.database, "PROJECT_SLUG", "docker compose up -d --build", "Woodpecker", "docker compose config --quiet", "${API_APP_PORT", "${API_PORT"]) {
       assert.ok(joined.includes(marker), `${combo.backend} missing ${marker}`);
     }
   }
@@ -60,7 +60,10 @@ test("go fiber postgres redis rabbitmq example includes demo workflow and creden
   const readme = output.files.find((file) => file.path.endsWith("README.md"))?.content ?? "";
   assert.ok(readme.includes("PostgreSQL"));
   assert.ok(readme.includes("RabbitMQ"));
-  assert.ok(readme.includes("user=appuser password=apppassword"));
+  assert.ok(readme.includes("user=demo_job_flow_user password=apppassword"));
+  const env = output.files.find((file) => file.path.endsWith(".env.example"))?.content ?? "";
+  assert.ok(env.includes("PROJECT_SLUG=demo-job-flow"));
+  assert.ok(env.includes("DB_NAME=demo_job_flow_db"));
 });
 
 test("quickstart lists projects and deletes only after exact name confirmation", () => {
@@ -98,4 +101,26 @@ test("quickstart replaces GitHub Actions with local Gitea and Woodpecker CI outp
   assert.ok(joined.includes("docker compose up -d --build"));
   assert.ok(output.automation.repositoryUrl.includes("gitea") || output.automation.repositoryUrl.includes("localhost:3001"));
   assert.ok(output.automation.pipelineUrl.includes("localhost:8000"));
+});
+
+test("express mysql quickstart exposes real runtime operation controls and dynamic resource names", () => {
+  const output = service.generate({ name: "GoneOps Demo", frontend: "Static HTML", backend: "ExpressJS", database: "MySQL", infrastructure: ["Redis", "RabbitMQ"] });
+  const env = output.files.find((file) => file.path.endsWith(".env.example"))?.content ?? "";
+  const compose = output.files.find((file) => file.path.endsWith("docker-compose.yml"))?.content ?? "";
+  const server = output.files.find((file) => file.path.endsWith("backend/src/server.js"))?.content ?? "";
+  const frontend = output.files.find((file) => file.path.endsWith("frontend/index.html"))?.content ?? "";
+
+  assert.ok(env.includes("PROJECT_SLUG=goneops-demo"));
+  assert.ok(env.includes("DB_NAME=goneops_demo_db"));
+  assert.ok(env.includes("DB_USER=goneops_demo_user"));
+  for (const container of ["goneops-demo-frontend", "goneops-demo-api", "goneops-demo-mysql", "goneops-demo-redis", "goneops-demo-rabbitmq"]) {
+    assert.ok(compose.includes(`container_name: ${container}`), `missing dynamic container ${container}`);
+  }
+  for (const endpoint of ["/health", "/users", "/users/:id", "/redis/set", "/redis/get", "/rabbitmq/publish", "/rabbitmq/consume", "/rabbitmq/logs"]) {
+    assert.ok(server.includes(endpoint), `missing backend endpoint ${endpoint}`);
+  }
+  for (const button of ["Health Check", "Create User", "List Users", "Delete User", "Redis SET", "Redis GET", "RabbitMQ Publish", "RabbitMQ Consume/Logs"]) {
+    assert.ok(frontend.includes(button), `missing frontend control ${button}`);
+  }
+  assert.doesNotMatch(frontend, /mock|simulat/i);
 });

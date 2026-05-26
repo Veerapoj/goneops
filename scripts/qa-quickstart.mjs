@@ -99,7 +99,7 @@ try {
   }
   assert.ok(!paths.some((path) => path.includes(".github/workflows")), "GitHub Actions workflow must not be generated");
   const allContent = generated.files.map((file) => file.content).join("\n");
-  for (const marker of ["docker compose config --quiet", "docker compose build", "docker compose up -d --build", "mysql2", "createClient", "amqplib", "/health", "/jobs"]) {
+  for (const marker of ["docker compose config --quiet", "docker compose build", "docker compose up -d --build", "mysql2", "createClient", "amqplib", "/health", "/users", "/redis/set", "/redis/get", "/rabbitmq/publish", "/rabbitmq/consume", "PROJECT_SLUG=goneops-demo", "DB_NAME=goneops_demo_db", "DB_USER=goneops_demo_user", "container_name: goneops-demo-redis", "container_name: goneops-demo-rabbitmq"]) {
     assert.ok(allContent.includes(marker), `missing generated marker ${marker}`);
   }
 
@@ -117,6 +117,7 @@ try {
   env = env.replace(/^MINIO_ROOT_PASSWORD=.*$/m, "MINIO_ROOT_PASSWORD=local-demo-minio-password");
   writeFileSync(envPath, env);
 
+  docker("docker rm -f goneops-demo-frontend goneops-demo-api goneops-demo-mysql goneops-demo-redis goneops-demo-rabbitmq 2>/dev/null || true", { cwd: tempRoot, timeout: 120_000 });
   docker("docker compose config --quiet", { cwd: tempRoot, timeout: 120_000 });
   docker(`docker compose -p ${composeProject} up -d --build`, { cwd: tempRoot, timeout: 600_000, stdio: "inherit" });
 
@@ -124,21 +125,57 @@ try {
   assert.deepEqual({ database: health.database, redis: health.redis, rabbitmq: health.rabbitmq }, { database: true, redis: true, rabbitmq: true });
 
   await waitForHttp200(`http://127.0.0.1:${ports.FRONTEND_APP_PORT}/`, "generated sandbox frontend");
-  const createdResponse = await fetch(`http://127.0.0.1:${ports.API_APP_PORT}/jobs`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ title: "Runtime QA Job" }) });
+  const createdResponse = await fetch(`http://127.0.0.1:${ports.API_APP_PORT}/users`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "Runtime QA User", email: `runtime-${process.pid}@example.local` }) });
   assert.equal(createdResponse.status, 201);
   const created = await createdResponse.json();
-  assert.equal(created.title, "Runtime QA Job");
+  assert.equal(created.name, "Runtime QA User");
+  assert.ok(created.id, "created MySQL user id missing");
+  const usersResponse = await fetch(`http://127.0.0.1:${ports.API_APP_PORT}/users`);
+  assert.equal(usersResponse.status, 200);
+  const users = await usersResponse.json();
+  assert.ok(users.some((user) => user.id === created.id), "created MySQL user missing from list");
+  const deleteResponse = await fetch(`http://127.0.0.1:${ports.API_APP_PORT}/users/${created.id}`, { method: "DELETE" });
+  assert.equal(deleteResponse.status, 200);
+  const deleted = await deleteResponse.json();
+  assert.equal(deleted.deleted, true);
+  const usersAfterDelete = await (await fetch(`http://127.0.0.1:${ports.API_APP_PORT}/users`)).json();
+  assert.ok(!usersAfterDelete.some((user) => user.id === created.id), "deleted MySQL user still listed");
+
+  const redisKey = `quickstart:qa:${process.pid}`;
+  const redisSetResponse = await fetch(`http://127.0.0.1:${ports.API_APP_PORT}/redis/set`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ key: redisKey, value: "runtime-redis-value" }) });
+  assert.equal(redisSetResponse.status, 200);
+  assert.equal((await redisSetResponse.json()).stored, true);
+  const redisGetResponse = await fetch(`http://127.0.0.1:${ports.API_APP_PORT}/redis/get?key=${encodeURIComponent(redisKey)}`);
+  assert.equal(redisGetResponse.status, 200);
+  assert.equal((await redisGetResponse.json()).value, "runtime-redis-value");
+
+  const rabbitMessage = `runtime-rabbit-${process.pid}`;
+  const publishResponse = await fetch(`http://127.0.0.1:${ports.API_APP_PORT}/rabbitmq/publish`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ message: rabbitMessage }) });
+  assert.equal(publishResponse.status, 200);
+  assert.equal((await publishResponse.json()).published, true);
+  const consumeResponse = await fetch(`http://127.0.0.1:${ports.API_APP_PORT}/rabbitmq/consume`, { method: "POST" });
+  assert.equal(consumeResponse.status, 200);
+  const consumed = await consumeResponse.json();
+  assert.equal(consumed.message, rabbitMessage);
+  const rabbitLogs = await (await fetch(`http://127.0.0.1:${ports.API_APP_PORT}/rabbitmq/logs`)).json();
+  assert.ok(rabbitLogs.logs.some((entry) => entry.action === "publish" && entry.body === rabbitMessage), "RabbitMQ publish log missing");
+  assert.ok(rabbitLogs.logs.some((entry) => entry.action === "consume" && entry.body === rabbitMessage), "RabbitMQ consume log missing");
+
+  const createdJobResponse = await fetch(`http://127.0.0.1:${ports.API_APP_PORT}/jobs`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ title: "Runtime QA Job" }) });
+  assert.equal(createdJobResponse.status, 201);
+  const createdJob = await createdJobResponse.json();
+  assert.equal(createdJob.title, "Runtime QA Job");
   const jobsResponse = await fetch(`http://127.0.0.1:${ports.API_APP_PORT}/jobs`);
   assert.equal(jobsResponse.status, 200);
   const jobs = await jobsResponse.json();
   assert.ok(jobs.some((job) => job.id === "demo-1"), "seeded MySQL job missing");
-  assert.ok(jobs.some((job) => job.id === created.id), "created MySQL job missing");
+  assert.ok(jobs.some((job) => job.id === createdJob.id), "created MySQL job missing");
 
   const ps = docker(`docker compose -p ${composeProject} ps --format json`, { cwd: tempRoot, timeout: 120_000 });
-  assert.ok(ps.includes("api"), "docker compose ps should include api service");
-  assert.ok(ps.includes("mysql"), "docker compose ps should include mysql service");
-  assert.ok(ps.includes("redis"), "docker compose ps should include redis service");
-  assert.ok(ps.includes("rabbitmq"), "docker compose ps should include rabbitmq service");
+  assert.ok(ps.includes("goneops-demo-api"), "docker compose ps should include slugged api container");
+  assert.ok(ps.includes("goneops-demo-mysql"), "docker compose ps should include slugged mysql container");
+  assert.ok(ps.includes("goneops-demo-redis"), "docker compose ps should include slugged redis container");
+  assert.ok(ps.includes("goneops-demo-rabbitmq"), "docker compose ps should include slugged rabbitmq container");
 
   log("validate live QuickStart automation uses an isolated generated workspace and compose project");
   const liveService = new QuickStartGeneratorService();
