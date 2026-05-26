@@ -73,10 +73,13 @@ test("quickstart result panel shows generated project link, logs, API target, an
     "Sandbox URL: /quickstart/projects/goneops-demo/sandbox",
     "Gitea → Woodpecker CI → Docker Compose",
     "Open generated project:",
+    "Open project page",
     "result.stackSummary",
     "result.generationLogs.map",
     "result.automation.logs.map",
     "Open sandbox URL:",
+    "Open sandbox",
+    "project.sandboxUrl ?? `${project.url}/sandbox`",
     "Created Projects",
     "Delete project",
     "Confirm project name",
@@ -102,7 +105,9 @@ test("quickstart generated project route loads backend project URL and renders s
     "CI/CD logs",
     "Gitea repository:",
     "Woodpecker pipeline:",
-    "Sandbox URL:",
+    "Open sandbox:",
+    "project.automation.workspacePath",
+    "project.automation.composeProject",
     "Selected file",
     "setSelectedFilePath(file.path)",
     "selectedFile?.content",
@@ -111,8 +116,20 @@ test("quickstart generated project route loads backend project URL and renders s
   }
 });
 
-test("quickstart sandbox route displays local-first build and startup validation", () => {
-  for (const label of ["QuickStart Sandbox", "Local-first Vercel sandbox", "Source Control", "CI/CD", "Runtime", "Docker Compose sandbox", "Build and startup validation logs"]) {
+test("quickstart sandbox route prioritizes the live generated application", () => {
+  for (const label of [
+    "QuickStart Sandbox",
+    "Generated demo application",
+    "real generated frontend app",
+    "create/read database jobs",
+    "Redis",
+    "RabbitMQ",
+    "<iframe",
+    "Open live app",
+    "API health",
+    "Secondary infrastructure details",
+    "Logs, service status, and metadata"
+  ]) {
     assert.ok(sandboxRoute.includes(label));
   }
 });

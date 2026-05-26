@@ -186,6 +186,8 @@ export class QuickStartGeneratorService {
       repositoryUrl: live.repositoryUrl,
       pipelineUrl: live.pipelineUrl,
       sandboxUrl: live.sandboxUrl,
+      liveFrontendUrl: live.liveFrontendUrl,
+      liveApiUrl: live.liveApiUrl,
       steps: live.steps,
       logs: live.logs
     };
@@ -197,7 +199,9 @@ export class QuickStartGeneratorService {
 
   private async runLiveAutomation(project: GenerateQuickStartResponse): Promise<QuickStartLiveAutomationResult> {
     const slug = project.project.slug;
-    const workspaceRoot = resolve(process.env.QUICKSTART_WORKSPACE_DIR ?? ".goneops/quickstart-projects");
+    const cwd = process.cwd();
+    const defaultWorkspaceRoot = cwd.endsWith("/apps/backend") ? resolve(cwd, "../..", ".goneops/quickstart-projects") : resolve(cwd, ".goneops/quickstart-projects");
+    const workspaceRoot = resolve(process.env.QUICKSTART_WORKSPACE_DIR ?? defaultWorkspaceRoot);
     const workspacePath = join(workspaceRoot, slug);
     const composeProject = `qs-${slug}`.replace(/[^a-z0-9-]/g, "-").slice(0, 52);
     const owner = process.env.GITEA_OWNER ?? "goneops";
@@ -206,6 +210,7 @@ export class QuickStartGeneratorService {
     const repositoryUrl = `${giteaUrl}/${owner}/${slug}`;
     const pipelineUrl = `${woodpeckerUrl}/repos/${owner}/${slug}`;
     const sandboxUrl = `/quickstart/projects/${slug}/sandbox`;
+    const { frontendUrl: liveFrontendUrl, apiUrl: liveApiUrl } = this.liveServiceUrls(slug);
     const steps: QuickStartAutomationStep[] = [];
     const pushStep = (step: QuickStartAutomationStep) => steps.push(step);
 
@@ -249,9 +254,9 @@ export class QuickStartGeneratorService {
     pushStep({ step: "Validate sandbox Docker Compose", status: "success", detail: `compose project ${composeProject}` });
     await this.runCommand("sg", ["docker", "-c", `docker compose -p ${composeProject} up -d --build`], workspacePath, 600_000);
     pushStep({ step: "Start sandbox", status: "success", detail: `Docker Compose sandbox started as ${composeProject}` });
-    pushStep({ step: "Expose sandbox URL", status: "success", detail: sandboxUrl });
+    pushStep({ step: "Expose sandbox URL", status: "success", detail: `${sandboxUrl} renders live app ${liveFrontendUrl} with API ${liveApiUrl}` });
 
-    return { workspacePath, composeProject, repositoryUrl, pipelineUrl, sandboxUrl, steps, logs: steps.map((step) => `[${step.status}] ${step.step}: ${step.detail}`) };
+    return { workspacePath, composeProject, repositoryUrl, pipelineUrl, sandboxUrl, liveFrontendUrl, liveApiUrl, steps, logs: steps.map((step) => `[${step.status}] ${step.step}: ${step.detail}`) };
   }
 
   private async cleanupLiveProject(project: GenerateQuickStartResponse) {
@@ -263,9 +268,19 @@ export class QuickStartGeneratorService {
     }
   }
 
-  private renderSandboxEnv(project: GenerateQuickStartResponse, composeProject: string) {
-    const hash = Array.from(project.project.slug).reduce((sum, char) => sum + char.charCodeAt(0), 0);
+  private liveServicePorts(slug: string) {
+    const hash = Array.from(slug).reduce((sum, char) => sum + char.charCodeAt(0), 0);
     const base = 23000 + (hash % 1000);
+    return { frontend: base, api: base + 1 };
+  }
+
+  private liveServiceUrls(slug: string) {
+    const ports = this.liveServicePorts(slug);
+    return { frontendUrl: `http://localhost:${ports.frontend}`, apiUrl: `http://localhost:${ports.api}` };
+  }
+
+  private renderSandboxEnv(project: GenerateQuickStartResponse, composeProject: string) {
+    const base = this.liveServicePorts(project.project.slug).frontend;
     const env = project.files.find((file) => file.path.endsWith(".env.example"))?.content ?? "";
     return env
       .replace(/^FRONTEND_APP_PORT=.*$/m, `FRONTEND_APP_PORT=${base}`)
@@ -342,6 +357,8 @@ export class QuickStartGeneratorService {
       repositoryUrl,
       pipelineUrl,
       sandboxUrl,
+      liveFrontendUrl: this.liveServiceUrls(slug).frontendUrl,
+      liveApiUrl: this.liveServiceUrls(slug).apiUrl,
       steps,
       logs: steps.map((step) => `[${step.status}] ${step.step}: ${step.detail}`)
     };
@@ -597,6 +614,8 @@ const port = process.env.API_PORT;
 if (!port) { throw new Error("API_PORT must be set through .env"); }
 const jobs = new Map([["demo-1", { id: "demo-1", title: "Seeded demo job", status: "seeded" }]]);
 const app = express();
+app.use((_, res, next) => { res.setHeader("access-control-allow-origin", "*"); res.setHeader("access-control-allow-methods", "GET,POST,OPTIONS"); res.setHeader("access-control-allow-headers", "content-type"); next(); });
+app.options("*", (_, res) => res.sendStatus(204));
 app.use(express.json());
 app.use("/swagger", swaggerUi.serve, swaggerUi.setup({ openapi: "3.0.3", info: { title: "QuickStart API", version: "0.1.0" }, paths: {} }));
 
@@ -629,7 +648,7 @@ async function checkRabbit() {
   return true;
 }
 async function publishRabbit(body) {
-  if (!${usesRabbit}) return;
+  if (!${usesRabbit}) return null;
   const connection = await amqp.connect(process.env.RABBITMQ_URL);
   const channel = await connection.createChannel();
   const queue = "jobs";
@@ -637,6 +656,17 @@ async function publishRabbit(body) {
   await channel.sendToQueue(queue, Buffer.from(body));
   await channel.close();
   await connection.close();
+  return body;
+}
+async function consumeRabbit() {
+  if (!${usesRabbit}) return null;
+  const connection = await amqp.connect(process.env.RABBITMQ_URL);
+  const channel = await connection.createChannel();
+  await channel.assertQueue("jobs", { durable: false });
+  const message = await channel.get("jobs", { noAck: true });
+  await channel.close();
+  await connection.close();
+  return message ? message.content.toString() : null;
 }
 
 ${includeHelloWorld ? `app.get("/hello", (_req, res) => res.json({ message: "Hello World from GoneOps QuickStart", service: "${label}" }));
@@ -659,6 +689,11 @@ app.post("/jobs", async (req, res) => {
   await publishRabbit(job.id);
   res.status(201).json(job);
 });
+app.get("/integrations", async (_req, res) => {
+  const redisLatestJob = redisClient ? await redisClient.get("latest_job") : null;
+  const rabbitmqConsumedJob = await consumeRabbit().catch(() => null);
+  res.json({ redisLatestJob, rabbitmqConsumedJob });
+});
 app.get("/jobs/:id", async (req, res) => {
   if (mysqlPool) { const [rows] = await mysqlPool.query("SELECT id, title, status FROM jobs WHERE id=?", [req.params.id]); if (!rows.length) return res.status(404).json({ error: "not_found" }); return res.json(rows[0]); }
   const job = jobs.get(req.params.id); if (!job) return res.status(404).json({ error: "not_found" }); return res.json(job);
@@ -678,10 +713,10 @@ app.listen(Number(port), () => console.log("api listening on " + port));
   }
 
   private renderFrontendFiles(selection: StackSelection): QuickStartGeneratedFile[] {
-    const app = `<!doctype html><html><head><meta charset="utf-8"><title>QuickStart Demo</title><style>body{font-family:Inter,system-ui;margin:40px;background:#fafafa;color:#111}button{background:#000;color:white;border:0;border-radius:10px;padding:12px 16px}</style></head><body><h1>${selection.frontend} Demo UI</h1><p>Click to create a demo job through the API.</p><button onclick="createJob()">Create Demo Job</button><pre id="out">Waiting...</pre><script>async function createJob(){const api='http://localhost:'+('\${API_APP_PORT}'||'8080'); const r=await fetch(api+'/jobs',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({title:'Create Demo Job'})}); document.getElementById('out').textContent=JSON.stringify(await r.json(),null,2)}</script></body></html>`;
+    const app = `<!doctype html><html><head><meta charset="utf-8"><title>QuickStart Demo</title><style>body{font-family:Inter,system-ui;margin:0;background:#f7f7f7;color:#111}.app{max-width:980px;margin:32px auto;padding:24px}.hero,.panel{background:white;border:1px solid #e5e5e5;border-radius:24px;padding:24px;box-shadow:0 20px 50px rgba(0,0,0,.06)}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-top:16px}button,input{border-radius:12px;padding:12px 14px;border:1px solid #ddd}button{background:#000;color:white;border:0;font-weight:700;cursor:pointer}.secondary{background:#0ea5e9}.ok{color:#047857}.bad{color:#b91c1c}pre{white-space:pre-wrap;background:#080808;color:#ededed;border-radius:16px;padding:16px;max-height:300px;overflow:auto}</style></head><body><main class="app"><section class="hero"><div style="font-size:12px;text-transform:uppercase;letter-spacing:.18em;color:#777">Generated demo application</div><h1>${selection.frontend} Live Demo UI</h1><p>This is the real generated frontend. It calls the generated backend API, writes jobs to the database, stores latest job in Redis, and publishes/consumes RabbitMQ messages when selected.</p><div class="grid"><button onclick="loadHealth()">Check health</button><button onclick="loadJobs()">Load database jobs</button><button class="secondary" onclick="createJob()">Create job + Redis + RabbitMQ</button><button class="secondary" onclick="loadIntegrations()">Read Redis / consume RabbitMQ</button></div></section><section class="panel" style="margin-top:16px"><label>Job title</label><input id="title" style="width:100%;margin-top:8px" value="Demo job from live sandbox UI"><pre id="out">Ready. API base: <span id="api"></span></pre></section></main><script>const API_PORT="__API_APP_PORT__"; const api=location.protocol+'//'+location.hostname+':'+API_PORT; document.getElementById('api').textContent=api; async function show(label,promise){const out=document.getElementById('out'); out.textContent=label+'...'; try{const r=await promise; const data=await r.json(); out.textContent=label+'\n'+JSON.stringify(data,null,2)}catch(e){out.textContent=label+' failed: '+e.message}} function loadHealth(){return show('Health + service connectivity', fetch(api+'/health'))} function loadJobs(){return show('Database CRUD: list jobs', fetch(api+'/jobs'))} function createJob(){return show('Create job: database insert + Redis set + RabbitMQ publish', fetch(api+'/jobs',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({title:document.getElementById('title').value})}))} function loadIntegrations(){return show('Redis GET + RabbitMQ consume', fetch(api+'/integrations'))} loadHealth(); loadJobs();</script></body></html>`;
     return [
       { path: "frontend/index.html", content: app },
-      { path: "frontend/server.mjs", content: "import { createServer } from 'node:http';\nimport { readFileSync } from 'node:fs';\nconst port = process.env.FRONTEND_PORT;\nif (!port) throw new Error('FRONTEND_PORT must be set through .env');\nconst html = readFileSync(new URL('./index.html', import.meta.url));\ncreateServer((_req, res) => { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); res.end(html); }).listen(Number(port), '0.0.0.0', () => console.log('frontend listening on ' + port));\n" },
+      { path: "frontend/server.mjs", content: "import { createServer } from 'node:http';\nimport { readFileSync } from 'node:fs';\nconst port = process.env.FRONTEND_PORT;\nconst apiAppPort = process.env.API_APP_PORT;\nif (!port) throw new Error('FRONTEND_PORT must be set through .env');\nif (!apiAppPort) throw new Error('API_APP_PORT must be set through .env');\nconst html = readFileSync(new URL('./index.html', import.meta.url), 'utf8').replaceAll('__API_APP_PORT__', apiAppPort);\ncreateServer((_req, res) => { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); res.end(html); }).listen(Number(port), '0.0.0.0', () => console.log('frontend listening on ' + port));\n" },
       { path: "frontend/Dockerfile", content: "FROM node:22-alpine\nWORKDIR /app\nCOPY index.html server.mjs ./\nCMD [\"node\", \"server.mjs\"]\n" }
     ];
   }

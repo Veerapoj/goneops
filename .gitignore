@@ -10,3 +10,4 @@ coverage/
 Dockerfile.local
 tmp/
 .goneops/quickstart-projects/
+**/.goneops/quickstart-projects/

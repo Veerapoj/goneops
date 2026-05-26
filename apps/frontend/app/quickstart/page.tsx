@@ -231,24 +231,42 @@ export default function QuickStartPage() {
                   {projects.map((project) => {
                     const selected = project.slug === selectedProject?.slug;
                     return (
-                      <button
+                      <div
                         key={project.slug}
                         className={`rounded-2xl border p-4 text-left transition ${selected ? "border-black bg-white" : "border-[#e5e5e5] bg-white/70 hover:border-black"}`}
-                        onClick={() => {
-                          setSelectedProjectSlug(project.slug);
-                          setDeleteConfirmation("");
-                        }}
-                        type="button"
                       >
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <div className="font-semibold">{project.name}</div>
-                            <div className="mt-1 font-mono text-xs text-[#666]">{project.slug}</div>
+                        <button
+                          className="w-full text-left"
+                          onClick={() => {
+                            setSelectedProjectSlug(project.slug);
+                            setDeleteConfirmation("");
+                          }}
+                          type="button"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <div className="font-semibold">{project.name}</div>
+                              <div className="mt-1 font-mono text-xs text-[#666]">{project.slug}</div>
+                            </div>
+                            <div className="rounded-full bg-[#f5f5f5] px-2 py-1 text-xs text-[#777]">{project.fileCount} files</div>
                           </div>
-                          <div className="rounded-full bg-[#f5f5f5] px-2 py-1 text-xs text-[#777]">{project.fileCount} files</div>
+                          <div className="mt-2 text-xs text-[#666]">{project.stackSummary}</div>
+                        </button>
+                        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                          <Link className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-center text-xs font-semibold text-emerald-800" href={project.url}>
+                            Open project page
+                          </Link>
+                          <Link className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-center text-xs font-semibold text-sky-800" href={project.sandboxUrl ?? `${project.url}/sandbox`}>
+                            Open sandbox
+                          </Link>
                         </div>
-                        <div className="mt-2 text-xs text-[#666]">{project.stackSummary}</div>
-                      </button>
+                        {selected ? (
+                          <div className="mt-3 grid gap-1 rounded-xl bg-[#fafafa] p-3 font-mono text-[11px] text-[#666]">
+                            <div>project: {project.url}</div>
+                            <div>sandbox: {project.sandboxUrl ?? `${project.url}/sandbox`}</div>
+                          </div>
+                        ) : null}
+                      </div>
                     );
                   })}
 

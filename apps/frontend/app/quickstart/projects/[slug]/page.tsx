@@ -18,7 +18,7 @@ type GeneratedProject = {
   generationLogs: string[];
   dockerCommands: string[];
   apiExamples: string[];
-  automation?: { repositoryUrl: string; pipelineUrl: string; sandboxUrl: string; logs: string[]; sourceControl: string; cicd: string; runtime: string };
+  automation?: { repositoryUrl: string; pipelineUrl: string; sandboxUrl: string; logs: string[]; sourceControl: string; cicd: string; runtime: string; workspacePath?: string; composeProject?: string };
 };
 
 function defaultSelectedFilePath(project: GeneratedProject): string | null {
@@ -89,11 +89,15 @@ export default function QuickStartProjectPage() {
               <div className="mt-2 font-mono text-xs text-[#666]">/quickstart/projects/{project.project.slug}</div>
               <div className="mt-4 text-sm text-[#555]">{project.stackSummary}</div>
               {project.automation ? (
-                <div className="mt-4 grid gap-2 rounded-2xl bg-[#f7f7f7] p-3 text-xs text-[#555]">
+                <div className="mt-4 grid gap-3 rounded-2xl bg-[#f7f7f7] p-3 text-xs text-[#555]">
                   <div className="font-semibold text-[#111]">Local self-hosted stack</div>
                   <div>Gitea repository: {project.automation.repositoryUrl}</div>
                   <div>Woodpecker pipeline: {project.automation.pipelineUrl}</div>
-                  <Link className="font-semibold text-sky-700" href={project.automation.sandboxUrl}>Sandbox URL: {project.automation.sandboxUrl}</Link>
+                  <div className="font-mono">workspace: {project.automation.workspacePath ?? "not persisted"}</div>
+                  <div className="font-mono">compose: {project.automation.composeProject ?? "not started"}</div>
+                  <Link className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-center font-semibold text-sky-800" href={project.automation.sandboxUrl}>
+                    Open sandbox: {project.automation.sandboxUrl}
+                  </Link>
                 </div>
               ) : null}
 
