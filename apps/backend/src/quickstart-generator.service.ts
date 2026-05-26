@@ -1,3 +1,7 @@
+import { execFile } from "node:child_process";
+import { mkdir, rm, writeFile } from "node:fs/promises";
+import { dirname, join, relative, resolve } from "node:path";
+import { promisify } from "node:util";
 import {
   GenerateQuickStartRequest,
   DeleteQuickStartProjectRequest,
@@ -8,8 +12,11 @@ import {
   QuickStartGeneratedFile,
   QuickStartInfrastructure,
   QuickStartProjectSummary,
-  QuickStartAutomationStep
+  QuickStartAutomationStep,
+  QuickStartLiveAutomationResult
 } from "./quickstart-generator.types";
+
+const execFileAsync = promisify(execFile);
 
 const FRONTENDS: QuickStartFrontend[] = ["NextJS", "React", "Vue", "Static HTML"];
 const BACKENDS: QuickStartBackend[] = ["Go Fiber", "NestJS", "ExpressJS", "FastAPI"];
@@ -44,6 +51,7 @@ export class QuickStartGeneratorService {
       throw new Error(`Confirmation name must match project name: ${project.project.name}`);
     }
     this.generatedProjects.delete(slug);
+    void this.cleanupLiveProject(project);
     return { deleted: true, slug };
   }
 
@@ -168,6 +176,149 @@ export class QuickStartGeneratorService {
     return response;
   }
 
+  async generateAndAutomate(request: GenerateQuickStartRequest = {}): Promise<GenerateQuickStartResponse> {
+    const response = this.generate(request);
+    const live = await this.runLiveAutomation(response);
+    response.automation = {
+      ...response.automation,
+      workspacePath: live.workspacePath,
+      composeProject: live.composeProject,
+      repositoryUrl: live.repositoryUrl,
+      pipelineUrl: live.pipelineUrl,
+      sandboxUrl: live.sandboxUrl,
+      steps: live.steps,
+      logs: live.logs
+    };
+    response.generationLogs.push(...live.logs);
+    response.containerStatus = response.containerStatus.map((item) => ({ ...item, status: "sandbox_started", health: `isolated compose project ${live.composeProject}` }));
+    this.generatedProjects.set(response.project.slug, response);
+    return response;
+  }
+
+  private async runLiveAutomation(project: GenerateQuickStartResponse): Promise<QuickStartLiveAutomationResult> {
+    const slug = project.project.slug;
+    const workspaceRoot = resolve(process.env.QUICKSTART_WORKSPACE_DIR ?? ".goneops/quickstart-projects");
+    const workspacePath = join(workspaceRoot, slug);
+    const composeProject = `qs-${slug}`.replace(/[^a-z0-9-]/g, "-").slice(0, 52);
+    const owner = process.env.GITEA_OWNER ?? "goneops";
+    const giteaUrl = (process.env.GITEA_URL ?? "http://localhost:3001").replace(/\/$/, "");
+    const woodpeckerUrl = (process.env.WOODPECKER_URL ?? "http://localhost:8000").replace(/\/$/, "");
+    const repositoryUrl = `${giteaUrl}/${owner}/${slug}`;
+    const pipelineUrl = `${woodpeckerUrl}/repos/${owner}/${slug}`;
+    const sandboxUrl = `/quickstart/projects/${slug}/sandbox`;
+    const steps: QuickStartAutomationStep[] = [];
+    const pushStep = (step: QuickStartAutomationStep) => steps.push(step);
+
+    await rm(workspacePath, { recursive: true, force: true });
+    for (const file of project.files) {
+      const output = join(workspacePath, relative(slug, file.path));
+      await mkdir(dirname(output), { recursive: true });
+      await writeFile(output, file.content);
+    }
+    await writeFile(join(workspacePath, ".env"), this.renderSandboxEnv(project, composeProject));
+    pushStep({ step: "Persist generated project workspace", status: "success", detail: workspacePath });
+
+    await this.runCommand("git", ["init"], workspacePath);
+    await this.runCommand("git", ["checkout", "-B", "main"], workspacePath);
+    await this.runCommand("git", ["config", "user.name", "GoneOps QuickStart"], workspacePath);
+    await this.runCommand("git", ["config", "user.email", "quickstart@goneops.local"], workspacePath);
+    await this.runCommand("git", ["add", "."], workspacePath);
+    await this.runCommand("git", ["commit", "-m", "chore: initialize quickstart project"], workspacePath);
+    pushStep({ step: "Initialize isolated Git repository", status: "success", detail: `Git repository initialized under ${workspacePath}, outside the GoneOps source tree.` });
+
+    const giteaToken = process.env.GITEA_TOKEN;
+    if (giteaToken) {
+      await this.createGiteaRepo(giteaUrl, giteaToken, slug, project.project.name);
+      pushStep({ step: "Create Gitea repository", status: "success", detail: repositoryUrl });
+      await this.pushToGitea(workspacePath, giteaUrl, giteaToken, owner, slug);
+      pushStep({ step: "Push generated project", status: "success", detail: this.redactRemote(repositoryUrl) });
+    } else {
+      pushStep({ step: "Create Gitea repository", status: "requires_configuration", detail: "Set GITEA_TOKEN and GITEA_OWNER to enable live repository creation." });
+      pushStep({ step: "Push generated project", status: "requires_configuration", detail: "Skipped live push because GITEA_TOKEN is not configured." });
+    }
+
+    const woodpeckerToken = process.env.WOODPECKER_TOKEN;
+    if (woodpeckerToken) {
+      const detail = await this.triggerWoodpecker(woodpeckerUrl, woodpeckerToken, owner, slug);
+      pushStep({ step: "Trigger Woodpecker CI", status: "success", detail });
+    } else {
+      pushStep({ step: "Trigger Woodpecker CI", status: "requires_configuration", detail: "Set WOODPECKER_TOKEN after connecting Woodpecker to Gitea to trigger a live pipeline." });
+    }
+
+    await this.runCommand("sg", ["docker", "-c", "docker compose config --quiet"], workspacePath, 120_000);
+    pushStep({ step: "Validate sandbox Docker Compose", status: "success", detail: `compose project ${composeProject}` });
+    await this.runCommand("sg", ["docker", "-c", `docker compose -p ${composeProject} up -d --build`], workspacePath, 600_000);
+    pushStep({ step: "Start sandbox", status: "success", detail: `Docker Compose sandbox started as ${composeProject}` });
+    pushStep({ step: "Expose sandbox URL", status: "success", detail: sandboxUrl });
+
+    return { workspacePath, composeProject, repositoryUrl, pipelineUrl, sandboxUrl, steps, logs: steps.map((step) => `[${step.status}] ${step.step}: ${step.detail}`) };
+  }
+
+  private async cleanupLiveProject(project: GenerateQuickStartResponse) {
+    const composeProject = project.automation.composeProject;
+    const workspacePath = project.automation.workspacePath;
+    if (composeProject && workspacePath) {
+      await this.runCommand("sg", ["docker", "-c", `docker compose -p ${composeProject} down -v --remove-orphans`], workspacePath, 180_000).catch(() => undefined);
+      await rm(workspacePath, { recursive: true, force: true }).catch(() => undefined);
+    }
+  }
+
+  private renderSandboxEnv(project: GenerateQuickStartResponse, composeProject: string) {
+    const hash = Array.from(project.project.slug).reduce((sum, char) => sum + char.charCodeAt(0), 0);
+    const base = 23000 + (hash % 1000);
+    const env = project.files.find((file) => file.path.endsWith(".env.example"))?.content ?? "";
+    return env
+      .replace(/^FRONTEND_APP_PORT=.*$/m, `FRONTEND_APP_PORT=${base}`)
+      .replace(/^API_APP_PORT=.*$/m, `API_APP_PORT=${base + 1}`)
+      .replace(/^POSTGRES_APP_PORT=.*$/m, `POSTGRES_APP_PORT=${base + 2}`)
+      .replace(/^MYSQL_APP_PORT=.*$/m, `MYSQL_APP_PORT=${base + 3}`)
+      .replace(/^MONGO_APP_PORT=.*$/m, `MONGO_APP_PORT=${base + 4}`)
+      .replace(/^REDIS_APP_PORT=.*$/m, `REDIS_APP_PORT=${base + 5}`)
+      .replace(/^RABBITMQ_APP_PORT=.*$/m, `RABBITMQ_APP_PORT=${base + 6}`)
+      .replace(/^RABBITMQ_UI_APP_PORT=.*$/m, `RABBITMQ_UI_APP_PORT=${base + 7}`)
+      .concat(`\nCOMPOSE_PROJECT_NAME=${composeProject}\n`);
+  }
+
+  private async runCommand(command: string, args: string[], cwd: string, timeout = 120_000) {
+    return execFileAsync(command, args, { cwd, timeout, maxBuffer: 1024 * 1024, env: process.env });
+  }
+
+  private async createGiteaRepo(giteaUrl: string, token: string, slug: string, name: string) {
+    const response = await fetch(`${giteaUrl}/api/v1/user/repos`, {
+      method: "POST",
+      headers: { authorization: `token ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({ name: slug, description: `GoneOps QuickStart project: ${name}`, private: false, auto_init: false })
+    });
+    if (response.status === 409 || response.status === 422) return;
+    if (!response.ok) throw new Error(`Gitea repository creation failed: ${response.status} ${await response.text()}`);
+  }
+
+  private async pushToGitea(workspacePath: string, giteaUrl: string, token: string, owner: string, slug: string) {
+    const url = new URL(giteaUrl);
+    url.username = encodeURIComponent(token);
+    url.pathname = `${url.pathname.replace(/\/$/, "")}/${owner}/${slug}.git`;
+    await this.runCommand("git", ["remote", "remove", "origin"], workspacePath).catch(() => undefined);
+    await this.runCommand("git", ["remote", "add", "origin", url.toString()], workspacePath);
+    await this.runCommand("git", ["push", "-u", "origin", "main", "--force"], workspacePath, 180_000);
+    await this.runCommand("git", ["remote", "set-url", "origin", `${giteaUrl}/${owner}/${slug}.git`], workspacePath);
+  }
+
+  private async triggerWoodpecker(woodpeckerUrl: string, token: string, owner: string, slug: string) {
+    const endpoints = [`${woodpeckerUrl}/api/repos/${owner}/${slug}/builds`, `${woodpeckerUrl}/api/repos/${owner}%2F${slug}/builds`];
+    let last = "";
+    for (const endpoint of endpoints) {
+      const response = await fetch(endpoint, { method: "POST", headers: { authorization: `Bearer ${token}` } });
+      const body = await response.text();
+      if (response.ok) return `${endpoint.replace(woodpeckerUrl, woodpeckerUrl)} ${body ? "accepted" : "triggered"}`;
+      last = `${response.status} ${body}`;
+    }
+    throw new Error(`Woodpecker trigger failed: ${last}`);
+  }
+
+  private redactRemote(remote: string) {
+    return remote.replace(/:\/\/[^/@]+@/, "://[REDACTED]@");
+  }
+
   private automation(slug: string) {
     const giteaUrl = process.env.GITEA_URL ?? "http://localhost:3001";
     const woodpeckerUrl = process.env.WOODPECKER_URL ?? "http://localhost:8000";
@@ -206,7 +357,9 @@ export class QuickStartGeneratorService {
       fileCount: project.files.length,
       sandboxUrl: project.automation.sandboxUrl,
       repositoryUrl: project.automation.repositoryUrl,
-      pipelineUrl: project.automation.pipelineUrl
+      pipelineUrl: project.automation.pipelineUrl,
+      workspacePath: project.automation.workspacePath,
+      composeProject: project.automation.composeProject
     };
   }
 

@@ -23,8 +23,9 @@ export type GenerateQuickStartRequest = {
 };
 
 export type QuickStartGeneratedFile = { path: string; content: string };
-export type QuickStartAutomationStep = { step: string; status: "pending" | "ready" | "configured" | "requires_configuration"; detail: string };
-export type QuickStartProjectSummary = { name: string; slug: string; url: string; stackSummary: string; generatedAt: string; fileCount: number; sandboxUrl?: string; repositoryUrl?: string; pipelineUrl?: string };
+export type QuickStartAutomationStep = { step: string; status: "pending" | "ready" | "configured" | "requires_configuration" | "running" | "success" | "failed" | "skipped"; detail: string };
+export type QuickStartProjectSummary = { name: string; slug: string; url: string; stackSummary: string; generatedAt: string; fileCount: number; sandboxUrl?: string; repositoryUrl?: string; pipelineUrl?: string; workspacePath?: string; composeProject?: string };
+export type QuickStartLiveAutomationResult = { workspacePath: string; composeProject: string; repositoryUrl: string; pipelineUrl: string; sandboxUrl: string; steps: QuickStartAutomationStep[]; logs: string[] };
 export type DeleteQuickStartProjectRequest = { confirmationName?: string };
 export type GenerateQuickStartResponse = {
   edition: "GoneOps QuickStart Edition";
@@ -39,7 +40,7 @@ export type GenerateQuickStartResponse = {
   apiExamples: string[];
   dockerCommands: string[];
   generationLogs: string[];
-  automation: { mode: "local-self-hosted"; sourceControl: "Gitea"; cicd: "Woodpecker CI"; runtime: "Docker Compose"; repositoryUrl: string; pipelineUrl: string; sandboxUrl: string; steps: QuickStartAutomationStep[]; logs: string[] };
+  automation: { mode: "local-self-hosted"; sourceControl: "Gitea"; cicd: "Woodpecker CI"; runtime: "Docker Compose"; repositoryUrl: string; pipelineUrl: string; sandboxUrl: string; workspacePath?: string; composeProject?: string; steps: QuickStartAutomationStep[]; logs: string[] };
   containerStatus: { service: string; status: string; health: string }[];
   flow: ["select stack", "generate project", "create Gitea repo", "push project", "trigger Woodpecker CI", "build containers", "start sandbox", "open sandbox URL"];
   files: QuickStartGeneratedFile[];

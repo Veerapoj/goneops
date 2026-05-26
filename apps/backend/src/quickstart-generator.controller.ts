@@ -12,7 +12,15 @@ export class QuickStartGeneratorController {
   }
 
   @Post("generate")
-  generate(@Body() request: GenerateQuickStartRequest) {
+  async generate(@Body() request: GenerateQuickStartRequest) {
+    if (process.env.QUICKSTART_LIVE_AUTOMATION === "false") {
+      return this.quickStartGenerator.generate(request);
+    }
+    return this.quickStartGenerator.generateAndAutomate(request);
+  }
+
+  @Post("generate-preview")
+  generatePreview(@Body() request: GenerateQuickStartRequest) {
     return this.quickStartGenerator.generate(request);
   }
 

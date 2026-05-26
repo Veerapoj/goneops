@@ -22,6 +22,7 @@ Replace QuickStart hosted GitHub assumptions with a local-first stack:
 - Added platform Docker Compose services for local Gitea and Woodpecker baseline configuration.
 - Strengthened generated Express/Nest Node starter output with real MySQL, Redis, RabbitMQ connectivity and `/jobs` runtime behavior.
 - Added `scripts/qa-quickstart.mjs` for generated-stack Docker Compose runtime validation.
+- Added live local automation path that persists generated workspaces, initializes Git, optionally creates/pushes to Gitea when tokens exist, optionally triggers Woodpecker when configured, and starts Docker Compose sandboxes.
 - Doubled QuickStart QA wait/retry windows after the first run was interrupted by command timeout during Docker startup.
 
 ## Explicit boundaries
@@ -45,15 +46,21 @@ Replace QuickStart hosted GitHub assumptions with a local-first stack:
 - Generated frontend HTTP 200 validation: passed.
 - Generated API `/health` with MySQL/Redis/RabbitMQ connectivity: passed.
 - Generated `/jobs` create/list validation: passed.
+- Live `generateAndAutomate` sandbox validation: passed for MySQL/Redis/RabbitMQ health and frontend HTTP 200; cleanup removed workspace and compose project.
 - Root `docker compose config --quiet`: passed.
 - Secret-like token scan for tracked and untracked non-ignored files: passed.
 
 ## Troubleshooting notes
 
-- An earlier `npm run qa:quickstart` run was interrupted while the generated Docker Compose stack had already started containers. The containers were cleaned up manually before retry.
-- Retry windows were increased 2x: API health wait from 90 to 180 attempts and frontend HTTP wait from 60 to 120 attempts.
+- Removed Playwright from the blocking `qa:quickstart` path; browser smoke remains available separately as `npm run e2e:quickstart`.
+- Runtime QA initially exposed generated-stack issues before final pass: Redis/RabbitMQ env lines needed explicit separation, and the static sandbox frontend needed to listen on the configured `FRONTEND_PORT` instead of nginx port 80. Both were fixed and revalidated.
 - Current Hermes gateway still needs Docker commands through `sg docker -c`.
+
+## Final git state
+
+- Commit: latest local self-hosted QuickStart commit on `main`.
+- Branch: `main` is expected to be pushed after this state update.
 
 ## Next smallest step
 
-Complete final git hygiene: stage, run whitespace check, commit, push, and verify `main` is synced with `origin/main`.
+Configure real local Gitea/Woodpecker credentials and webhooks when ready, then promote `requires_configuration` automation steps to live repository creation, push, and pipeline trigger after runtime verification.
