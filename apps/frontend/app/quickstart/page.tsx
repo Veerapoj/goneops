@@ -15,7 +15,7 @@ const caches = ["Redis", "None"];
 const queues = ["RabbitMQ", "None"];
 const projectIndexKey = "quickstart:projects";
 
-type ProjectSummary = { name: string; slug: string; url: string; stackSummary: string; generatedAt: string; fileCount: number; sandboxUrl?: string; repositoryUrl?: string; pipelineUrl?: string };
+type ProjectSummary = { name: string; slug: string; url: string; stackSummary: string; generatedAt: string; fileCount: number; sandboxUrl?: string; repositoryUrl?: string; pipelineUrl?: string; workspacePath?: string; composeProject?: string };
 
 type GenerateResponse = {
   project: { name: string; slug: string; url: string; generatedAt: string };
@@ -23,7 +23,7 @@ type GenerateResponse = {
   readme: string;
   files: { path: string; content: string }[];
   generationLogs: string[];
-  automation: { repositoryUrl: string; pipelineUrl: string; sandboxUrl: string; logs: string[]; sourceControl: string; cicd: string; runtime: string };
+  automation: { repositoryUrl: string; pipelineUrl: string; sandboxUrl: string; logs: string[]; sourceControl: string; cicd: string; runtime: string; workspacePath?: string; composeProject?: string };
 };
 
 function projectSummaryFromGenerated(generated: GenerateResponse): ProjectSummary {
@@ -36,7 +36,9 @@ function projectSummaryFromGenerated(generated: GenerateResponse): ProjectSummar
     fileCount: generated.files.length,
     sandboxUrl: generated.automation.sandboxUrl,
     repositoryUrl: generated.automation.repositoryUrl,
-    pipelineUrl: generated.automation.pipelineUrl
+    pipelineUrl: generated.automation.pipelineUrl,
+    workspacePath: generated.automation.workspacePath,
+    composeProject: generated.automation.composeProject
   };
 }
 
@@ -65,7 +67,7 @@ export default function QuickStartPage() {
   const router = useRouter();
   const [projectName, setProjectName] = useState("goneops-demo");
   const [stack, setStack] = useState("NestJS");
-  const [database, setDatabase] = useState("PostgreSQL");
+  const [database, setDatabase] = useState("MySQL");
   const [cache, setCache] = useState("Redis");
   const [queue, setQueue] = useState("RabbitMQ");
   const [includeReadme, setIncludeReadme] = useState(true);
@@ -140,7 +142,7 @@ export default function QuickStartPage() {
     setProjects(merged);
     setSelectedProjectSlug(generated.project.slug);
     setResult(generated);
-    setStatus(`Generated ${generated.project.slug}`);
+    setStatus(`Generated ${generated.project.slug} with isolated sandbox ${generated.automation.composeProject ?? "pending"}`);
     router.push(generated.project.url);
   }
 
@@ -305,6 +307,10 @@ export default function QuickStartPage() {
                 </Link>
                 <div className="text-xs text-[#666]">{result.stackSummary}</div>
                 <div className="rounded-xl bg-[#f7f7f7] p-3 text-xs text-[#555]">{result.automation.sourceControl} → {result.automation.cicd} → {result.automation.runtime}</div>
+                <div className="rounded-xl bg-[#f7f7f7] p-3 font-mono text-xs text-[#555]">Workspace: {result.automation.workspacePath ?? "not persisted yet"}</div>
+                <div className="rounded-xl bg-[#f7f7f7] p-3 font-mono text-xs text-[#555]">Compose project: {result.automation.composeProject ?? "not started yet"}</div>
+                <div className="rounded-xl bg-[#f7f7f7] p-3 font-mono text-xs text-[#555]">Gitea repo: {result.automation.repositoryUrl}</div>
+                <div className="rounded-xl bg-[#f7f7f7] p-3 font-mono text-xs text-[#555]">Woodpecker pipeline: {result.automation.pipelineUrl}</div>
                 {result.generationLogs.map((log) => <div key={log} className="font-mono text-xs">{log}</div>)}
                 {result.automation.logs.map((log) => <div key={log} className="font-mono text-xs text-[#444]">{log}</div>)}
               </div>
