@@ -18,6 +18,7 @@ type GeneratedProject = {
   generationLogs: string[];
   dockerCommands: string[];
   apiExamples: string[];
+  automation?: { repositoryUrl: string; pipelineUrl: string; sandboxUrl: string; logs: string[]; sourceControl: string; cicd: string; runtime: string };
 };
 
 function defaultSelectedFilePath(project: GeneratedProject): string | null {
@@ -87,6 +88,14 @@ export default function QuickStartProjectPage() {
               <h1 className="mt-3 text-2xl font-semibold">{project.project.name}</h1>
               <div className="mt-2 font-mono text-xs text-[#666]">/quickstart/projects/{project.project.slug}</div>
               <div className="mt-4 text-sm text-[#555]">{project.stackSummary}</div>
+              {project.automation ? (
+                <div className="mt-4 grid gap-2 rounded-2xl bg-[#f7f7f7] p-3 text-xs text-[#555]">
+                  <div className="font-semibold text-[#111]">Local self-hosted stack</div>
+                  <div>Gitea repository: {project.automation.repositoryUrl}</div>
+                  <div>Woodpecker pipeline: {project.automation.pipelineUrl}</div>
+                  <Link className="font-semibold text-sky-700" href={project.automation.sandboxUrl}>Sandbox URL: {project.automation.sandboxUrl}</Link>
+                </div>
+              ) : null}
 
               <div className="mt-6 text-xs font-semibold uppercase tracking-wide text-[#777]">Generated files</div>
               <div className="mt-3 grid gap-2">
@@ -109,6 +118,12 @@ export default function QuickStartProjectPage() {
             </aside>
 
             <section className="rounded-3xl border border-[#e5e5e5] bg-white p-6 shadow-xl shadow-black/5">
+              {project.automation ? (
+                <div className="mb-4 rounded-2xl border border-[#eeeeee] bg-[#fbfbfb] p-4">
+                  <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[#777]">CI/CD logs</div>
+                  <div className="mt-3 grid gap-1">{project.automation.logs.map((log) => <div key={log} className="font-mono text-xs text-[#444]">{log}</div>)}</div>
+                </div>
+              ) : null}
               <div className="mb-4 flex items-center justify-between gap-4">
                 <div>
                   <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[#777]">File Preview</div>

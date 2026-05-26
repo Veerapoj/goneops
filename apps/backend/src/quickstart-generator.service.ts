@@ -7,7 +7,8 @@ import {
   QuickStartFrontend,
   QuickStartGeneratedFile,
   QuickStartInfrastructure,
-  QuickStartProjectSummary
+  QuickStartProjectSummary,
+  QuickStartAutomationStep
 } from "./quickstart-generator.types";
 
 const FRONTENDS: QuickStartFrontend[] = ["NextJS", "React", "Vue", "Static HTML"];
@@ -70,7 +71,8 @@ export class QuickStartGeneratorService {
           description: `Runnable ${backend} API starter with Swagger, health checks, Docker Compose, and local service wiring.`
         }))
       ],
-      flow: ["select stack", "click generate", "run local project"] as const
+      flow: ["select stack", "generate project", "create Gitea repo", "push project", "trigger Woodpecker CI", "build containers", "start sandbox", "open sandbox URL"] as const,
+      localPlatform: { sourceControl: "Gitea", cicd: "Woodpecker CI", runtime: "Docker Compose", giteaUrl: "http://localhost:3001", woodpeckerUrl: "http://localhost:8000" }
     };
   }
 
@@ -90,7 +92,9 @@ export class QuickStartGeneratorService {
     files.push({ path: `${slug}/.gitignore`, content: this.renderGitignore() });
     files.push({ path: `${slug}/Makefile`, content: this.renderMakefile() });
     if (includeDockerCompose) files.push({ path: `${slug}/docker-compose.yml`, content: this.renderDockerCompose(selection) });
-    if (includeCi) files.push({ path: `${slug}/.github/workflows/ci.yml`, content: this.renderCiWorkflow() });
+    if (includeCi) files.push({ path: `${slug}/.woodpecker.yml`, content: this.renderWoodpeckerPipeline() });
+    files.push({ path: `${slug}/scripts/local-cicd.sh`, content: this.renderLocalCicdScript() });
+    files.push({ path: `${slug}/scripts/start-sandbox.sh`, content: this.renderStartSandboxScript(slug) });
     files.push({ path: `${slug}/openapi.yaml`, content: this.renderOpenApi(name) });
     files.push({ path: `${slug}/scripts/healthcheck.sh`, content: this.renderHealthcheckScript() });
     files.push(...this.renderBackendFiles(selection, includeHelloWorld));
@@ -113,7 +117,7 @@ export class QuickStartGeneratorService {
       stackSummary: `${selection.frontend} + ${selection.backend} + ${selection.database} + ${selection.infrastructure.length ? selection.infrastructure.join(" + ") : "No cache/queue"}`,
       generatedServices: this.generatedServices(selection),
       ports,
-      urls: this.urls(ports),
+      urls: this.urls(ports).concat([{ name: "Sandbox", url: `/quickstart/projects/${slug}/sandbox` }]),
       credentials: this.credentials(selection),
       swaggerUrl: "http://localhost:${API_APP_PORT}/swagger",
       apiExamples: [
@@ -122,7 +126,7 @@ export class QuickStartGeneratorService {
         "curl http://localhost:${API_APP_PORT}/jobs",
         "curl -X POST http://localhost:${API_APP_PORT}/jobs -H 'content-type: application/json' -d '{\"title\":\"Create Demo Job\"}'"
       ],
-      dockerCommands: ["cp .env.example .env", "docker compose up --build", "docker compose ps", "docker compose down -v"],
+      dockerCommands: ["cp .env.example .env", "docker compose config --quiet", "docker compose up -d --build", "docker compose ps", "docker compose logs", "docker compose down -v"],
       generationLogs: [
         "[✓] Generate backend",
         ...(includeHelloWorld ? ["[✓] Generate Hello World"] : []),
@@ -132,12 +136,15 @@ export class QuickStartGeneratorService {
         ...(selection.infrastructure.includes("RabbitMQ") ? ["[✓] Generate RabbitMQ workflow"] : ["[✓] Skip queue workflow"]),
         ...(selection.infrastructure.includes("MinIO") ? ["[✓] Generate MinIO config"] : []),
         ...(includeDockerCompose ? ["[✓] Generate Docker Compose"] : []),
-        ...(includeCi ? ["[✓] Generate CI/CD"] : []),
+        ...(includeCi ? ["[✓] Generate Woodpecker CI pipeline"] : []),
+        "[✓] Prepare Gitea repository automation",
+        "[✓] Prepare Docker Compose sandbox URL",
         "[✓] Validate API",
         "[✓] Validate Swagger"
       ],
-      containerStatus: this.generatedServices(selection).map((service) => ({ service, status: "generated", health: "validated by docker compose health checks" })),
-      flow: ["select stack", "click generate", "run local project"],
+      automation: this.automation(slug),
+      containerStatus: this.generatedServices(selection).map((service) => ({ service, status: "generated", health: "validated by Docker Compose and Woodpecker pipeline checks" })),
+      flow: ["select stack", "generate project", "create Gitea repo", "push project", "trigger Woodpecker CI", "build containers", "start sandbox", "open sandbox URL"],
       files,
       readme,
       validation: {
@@ -161,6 +168,34 @@ export class QuickStartGeneratorService {
     return response;
   }
 
+  private automation(slug: string) {
+    const giteaUrl = process.env.GITEA_URL ?? "http://localhost:3001";
+    const woodpeckerUrl = process.env.WOODPECKER_URL ?? "http://localhost:8000";
+    const repositoryUrl = `${giteaUrl}/goneops/${slug}`;
+    const pipelineUrl = `${woodpeckerUrl}/repos/goneops/${slug}`;
+    const sandboxUrl = `/quickstart/projects/${slug}/sandbox`;
+    const configured = Boolean(process.env.GITEA_URL && process.env.WOODPECKER_URL);
+    const steps: QuickStartAutomationStep[] = [
+      { step: "Create Gitea repository", status: configured ? "configured" : "requires_configuration", detail: configured ? repositoryUrl : "Set GITEA_URL and a local Gitea access token before live repo creation." },
+      { step: "Push generated project", status: "ready", detail: "Generated scripts and local git metadata are ready for push to the self-hosted remote." },
+      { step: "Trigger Woodpecker CI", status: configured ? "configured" : "requires_configuration", detail: configured ? pipelineUrl : "Woodpecker server must be connected to Gitea before automatic trigger." },
+      { step: "Build containers", status: "ready", detail: "Woodpecker pipeline and local-cicd script both run docker compose build." },
+      { step: "Start sandbox", status: "ready", detail: "Docker Compose starts the generated app sandbox after validation." },
+      { step: "Expose sandbox URL", status: "ready", detail: sandboxUrl }
+    ];
+    return {
+      mode: "local-self-hosted" as const,
+      sourceControl: "Gitea" as const,
+      cicd: "Woodpecker CI" as const,
+      runtime: "Docker Compose" as const,
+      repositoryUrl,
+      pipelineUrl,
+      sandboxUrl,
+      steps,
+      logs: steps.map((step) => `[${step.status}] ${step.step}: ${step.detail}`)
+    };
+  }
+
   private toProjectSummary(project: GenerateQuickStartResponse): QuickStartProjectSummary {
     return {
       name: project.project.name,
@@ -168,7 +203,10 @@ export class QuickStartGeneratorService {
       url: project.project.url,
       stackSummary: project.stackSummary,
       generatedAt: project.project.generatedAt,
-      fileCount: project.files.length
+      fileCount: project.files.length,
+      sandboxUrl: project.automation.sandboxUrl,
+      repositoryUrl: project.automation.repositoryUrl,
+      pipelineUrl: project.automation.pipelineUrl
     };
   }
 
@@ -264,7 +302,8 @@ export class QuickStartGeneratorService {
       "DB_USER=appuser",
       "DB_PASSWORD=apppassword",
       `DB_TYPE=${selection.database}`,
-      "REDIS_URL=redis://redis:***@rabbitmq:5672",
+      "REDIS_URL=redis://redis:6379",
+      "RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672",
       "MINIO_ENDPOINT=minio:9000",
       "MINIO_ROOT_USER=minioadmin",
       "MINIO_ROOT_PASSWORD=minioadmin"
@@ -273,8 +312,10 @@ export class QuickStartGeneratorService {
   }
 
   private renderGitignore() { return ["node_modules/", ".env", ".DS_Store", "dist/", "__pycache__/", "target/", "*.log", ""].join("\n"); }
-  private renderMakefile() { return [".PHONY: up down ps logs health", "up:", "\tcp .env.example .env 2>/dev/null || true", "\tdocker compose up --build", "down:", "\tdocker compose down -v", "ps:", "\tdocker compose ps", "logs:", "\tdocker compose logs -f", "health:", "\tcurl http://localhost:$${API_APP_PORT}/health", ""].join("\n"); }
-  private renderCiWorkflow() { return ["name: quickstart-ci", "on:", "  push:", "    branches: [main]", "  pull_request:", "jobs:", "  validate:", "    runs-on: ubuntu-latest", "    steps:", "      - uses: actions/checkout@v4", "      - name: Validate Docker Compose", "        run: docker compose config --quiet", ""].join("\n"); }
+  private renderMakefile() { return [".PHONY: up down ps logs health ci sandbox", "up:", "\tcp .env.example .env 2>/dev/null || true", "\tdocker compose up -d --build", "down:", "\tdocker compose down -v", "ps:", "\tdocker compose ps", "logs:", "\tdocker compose logs -f", "health:", "\tcurl http://localhost:$${API_APP_PORT}/health", "ci:", "\tsh scripts/local-cicd.sh", "sandbox:", "\tsh scripts/start-sandbox.sh", ""].join("\n"); }
+  private renderWoodpeckerPipeline() { return ["pipeline:", "  validate:", "    image: docker:27-cli", "    commands:", "      - docker compose config --quiet", "  build:", "    image: docker:27-cli", "    commands:", "      - docker compose build", "  sandbox:", "    image: docker:27-cli", "    commands:", "      - docker compose up -d --build", "      - docker compose ps", "      - sh scripts/healthcheck.sh", "      - docker compose logs --no-color --tail=120", ""].join("\n"); }
+  private renderLocalCicdScript() { return ["#!/usr/bin/env sh", "set -eu", "docker compose config --quiet", "docker compose build", "docker compose up -d --build", "docker compose ps", "sh scripts/healthcheck.sh", "docker compose logs --no-color --tail=120", ""].join("\n"); }
+  private renderStartSandboxScript(slug: string) { return ["#!/usr/bin/env sh", "set -eu", "cp .env.example .env 2>/dev/null || true", "docker compose up -d --build", `printf 'Sandbox URL: /quickstart/projects/${slug}/sandbox\n'`, ""].join("\n"); }
   private renderHealthcheckScript() { return ["#!/usr/bin/env sh", "set -eu", "wget -qO- http://127.0.0.1:${API_PORT:-8080}/health >/dev/null", ""].join("\n"); }
 
   private renderOpenApi(name: string) {
@@ -375,7 +416,7 @@ func publishRabbit(url string, body string) error { conn, err := amqp.Dial(url);
 
   private renderExpressFiles(selection: StackSelection, includeHelloWorld: boolean): QuickStartGeneratedFile[] {
     return [
-      { path: "backend/package.json", content: JSON.stringify({ type: "module", scripts: { build: "node --check src/server.js", start: "node src/server.js" }, dependencies: { express: "^4.19.2", "swagger-ui-express": "^5.0.1" }, devDependencies: {} }, null, 2) + "\n" },
+      { path: "backend/package.json", content: JSON.stringify({ type: "module", scripts: { build: "node --check src/server.js", start: "node src/server.js" }, dependencies: { "amqplib": "^0.10.4", express: "^4.19.2", "mysql2": "^3.11.3", redis: "^4.7.0", "swagger-ui-express": "^5.0.1" }, devDependencies: {} }, null, 2) + "\n" },
       { path: "backend/src/server.js", content: this.renderNodeServer("ExpressJS", selection, includeHelloWorld) },
       { path: "backend/Dockerfile", content: "FROM node:22-alpine\nWORKDIR /app\nCOPY package.json package-lock.json* ./\nRUN npm install --omit=dev\nCOPY src ./src\nCMD [\"npm\", \"start\"]\n" }
     ];
@@ -383,27 +424,94 @@ func publishRabbit(url string, body string) error { conn, err := amqp.Dial(url);
 
   private renderNestFiles(selection: StackSelection, includeHelloWorld: boolean): QuickStartGeneratedFile[] {
     return [
-      { path: "backend/package.json", content: JSON.stringify({ type: "module", scripts: { build: "node --check src/server.js", start: "node src/server.js" }, dependencies: { express: "^4.19.2", "swagger-ui-express": "^5.0.1" } }, null, 2) + "\n" },
+      { path: "backend/package.json", content: JSON.stringify({ type: "module", scripts: { build: "node --check src/server.js", start: "node src/server.js" }, dependencies: { "amqplib": "^0.10.4", express: "^4.19.2", "mysql2": "^3.11.3", redis: "^4.7.0", "swagger-ui-express": "^5.0.1" } }, null, 2) + "\n" },
       { path: "backend/src/server.js", content: this.renderNodeServer("NestJS-compatible", selection, includeHelloWorld) },
       { path: "backend/Dockerfile", content: "FROM node:22-alpine\nWORKDIR /app\nCOPY package.json package-lock.json* ./\nRUN npm install --omit=dev\nCOPY src ./src\nCMD [\"npm\", \"start\"]\n" }
     ];
   }
 
   private renderNodeServer(label: string, selection: StackSelection, includeHelloWorld: boolean) {
-    return `import express from "express";
+    const usesMySql = selection.database === "MySQL";
+    const usesRedis = selection.infrastructure.includes("Redis");
+    const usesRabbit = selection.infrastructure.includes("RabbitMQ");
+    return `import amqp from "amqplib";
+import express from "express";
+import mysql from "mysql2/promise";
+import { createClient } from "redis";
 import swaggerUi from "swagger-ui-express";
 
 const port = process.env.API_PORT;
 if (!port) { throw new Error("API_PORT must be set through .env"); }
-const jobs = new Map();
+const jobs = new Map([["demo-1", { id: "demo-1", title: "Seeded demo job", status: "seeded" }]]);
 const app = express();
 app.use(express.json());
 app.use("/swagger", swaggerUi.serve, swaggerUi.setup({ openapi: "3.0.3", info: { title: "QuickStart API", version: "0.1.0" }, paths: {} }));
+
+const mysqlPool = ${usesMySql ? `mysql.createPool({ host: "mysql", port: 3306, user: process.env.DB_USER, password: process.env.DB_PASSWORD, database: process.env.DB_NAME, waitForConnections: true, connectionLimit: 4 })` : "null"};
+const redisClient = ${usesRedis ? "createClient({ url: process.env.REDIS_URL })" : "null"};
+if (redisClient) redisClient.on("error", (error) => console.error("redis error", error.message));
+
+async function retry(label, fn, attempts = 40) {
+  let lastError;
+  for (let i = 0; i < attempts; i += 1) {
+    try { return await fn(); } catch (error) { lastError = error; await new Promise((resolve) => setTimeout(resolve, 1000)); }
+  }
+  throw new Error(label + " failed: " + (lastError?.message ?? lastError));
+}
+
+async function init() {
+  if (mysqlPool) {
+    await retry("mysql connection", () => mysqlPool.query("SELECT 1"));
+    await mysqlPool.query("CREATE TABLE IF NOT EXISTS jobs (id VARCHAR(64) PRIMARY KEY, title TEXT NOT NULL, status VARCHAR(32) NOT NULL)");
+    await mysqlPool.query("INSERT IGNORE INTO jobs (id, title, status) VALUES ('demo-1', 'Seeded demo job', 'seeded')");
+  }
+  if (redisClient) await retry("redis connection", () => redisClient.connect());
+  if (${usesRabbit}) await retry("rabbitmq connection", async () => { const connection = await amqp.connect(process.env.RABBITMQ_URL); await connection.close(); });
+}
+
+async function checkRabbit() {
+  if (!${usesRabbit}) return true;
+  const connection = await amqp.connect(process.env.RABBITMQ_URL);
+  await connection.close();
+  return true;
+}
+async function publishRabbit(body) {
+  if (!${usesRabbit}) return;
+  const connection = await amqp.connect(process.env.RABBITMQ_URL);
+  const channel = await connection.createChannel();
+  const queue = "jobs";
+  await channel.assertQueue(queue, { durable: false });
+  await channel.sendToQueue(queue, Buffer.from(body));
+  await channel.close();
+  await connection.close();
+}
+
 ${includeHelloWorld ? `app.get("/hello", (_req, res) => res.json({ message: "Hello World from GoneOps QuickStart", service: "${label}" }));
-` : ""}app.get("/health", (_req, res) => res.json({ status: "ok", backend: "${label}", database: "${selection.database}", redis: Boolean(process.env.REDIS_URL), rabbitmq: Boolean(process.env.RABBITMQ_URL) }));
-app.get("/jobs", (_req, res) => res.json(Array.from(jobs.values())));
-app.post("/jobs", (req, res) => { const id = String(Date.now()); const job = { id, title: req.body?.title ?? "Create Demo Job", status: "processed" }; jobs.set(id, job); res.status(201).json(job); });
-app.get("/jobs/:id", (req, res) => { const job = jobs.get(req.params.id); if (!job) return res.status(404).json({ error: "not_found" }); return res.json(job); });
+` : ""}app.get("/health", async (_req, res) => {
+  const database = mysqlPool ? await mysqlPool.query("SELECT 1").then(() => true).catch(() => false) : "${selection.database}" === "None";
+  const redis = redisClient ? await redisClient.ping().then((value) => value === "PONG").catch(() => false) : !${usesRedis};
+  const rabbitmq = await checkRabbit().catch(() => false);
+  const ok = Boolean(database && redis && rabbitmq);
+  res.status(ok ? 200 : 503).json({ status: ok ? "ok" : "degraded", backend: "${label}", database, redis, rabbitmq });
+});
+app.get("/jobs", async (_req, res) => {
+  if (mysqlPool) { const [rows] = await mysqlPool.query("SELECT id, title, status FROM jobs ORDER BY id"); return res.json(rows); }
+  return res.json(Array.from(jobs.values()));
+});
+app.post("/jobs", async (req, res) => {
+  const id = String(Date.now()); const job = { id, title: req.body?.title ?? "Create Demo Job", status: "processed" };
+  if (mysqlPool) await mysqlPool.query("INSERT INTO jobs (id, title, status) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE title=VALUES(title), status=VALUES(status)", [job.id, job.title, job.status]);
+  else jobs.set(id, job);
+  if (redisClient) await redisClient.set("latest_job", job.id);
+  await publishRabbit(job.id);
+  res.status(201).json(job);
+});
+app.get("/jobs/:id", async (req, res) => {
+  if (mysqlPool) { const [rows] = await mysqlPool.query("SELECT id, title, status FROM jobs WHERE id=?", [req.params.id]); if (!rows.length) return res.status(404).json({ error: "not_found" }); return res.json(rows[0]); }
+  const job = jobs.get(req.params.id); if (!job) return res.status(404).json({ error: "not_found" }); return res.json(job);
+});
+
+await init();
 app.listen(Number(port), () => console.log("api listening on " + port));
 `;
   }
@@ -420,7 +528,8 @@ app.listen(Number(port), () => console.log("api listening on " + port));
     const app = `<!doctype html><html><head><meta charset="utf-8"><title>QuickStart Demo</title><style>body{font-family:Inter,system-ui;margin:40px;background:#fafafa;color:#111}button{background:#000;color:white;border:0;border-radius:10px;padding:12px 16px}</style></head><body><h1>${selection.frontend} Demo UI</h1><p>Click to create a demo job through the API.</p><button onclick="createJob()">Create Demo Job</button><pre id="out">Waiting...</pre><script>async function createJob(){const api='http://localhost:'+('\${API_APP_PORT}'||'8080'); const r=await fetch(api+'/jobs',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({title:'Create Demo Job'})}); document.getElementById('out').textContent=JSON.stringify(await r.json(),null,2)}</script></body></html>`;
     return [
       { path: "frontend/index.html", content: app },
-      { path: "frontend/Dockerfile", content: "FROM nginx:1.27-alpine\nCOPY index.html /usr/share/nginx/html/index.html\n" }
+      { path: "frontend/server.mjs", content: "import { createServer } from 'node:http';\nimport { readFileSync } from 'node:fs';\nconst port = process.env.FRONTEND_PORT;\nif (!port) throw new Error('FRONTEND_PORT must be set through .env');\nconst html = readFileSync(new URL('./index.html', import.meta.url));\ncreateServer((_req, res) => { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); res.end(html); }).listen(Number(port), '0.0.0.0', () => console.log('frontend listening on ' + port));\n" },
+      { path: "frontend/Dockerfile", content: "FROM node:22-alpine\nWORKDIR /app\nCOPY index.html server.mjs ./\nCMD [\"node\", \"server.mjs\"]\n" }
     ];
   }
 
@@ -437,6 +546,8 @@ app.listen(Number(port), () => console.log("api listening on " + port));
       "services:",
       "  frontend:",
       "    build: ./frontend",
+      "    env_file:",
+      "      - .env",
       "    ports:",
       "      - \"${FRONTEND_APP_PORT:?FRONTEND_APP_PORT must be set}:${FRONTEND_PORT:?FRONTEND_PORT must be set}\"",
       "    depends_on:",
@@ -474,14 +585,25 @@ app.listen(Number(port), () => console.log("api listening on " + port));
   }
 
   private renderReadme(name: string, slug: string, selection: StackSelection, ports: ServicePort[]) {
-    return `# ${name}\n\nGenerated by GoneOps QuickStart Edition.\n\n## Architecture overview\n\n${selection.frontend} frontend, ${selection.backend} backend API, ${selection.database}, and ${selection.infrastructure.join(", ")} run together on Docker Compose automatic service networking.\n\n## Service list\n\n${this.generatedServices(selection).map((service) => `- ${service}`).join("\n")}\n\n## Startup steps\n\n\`\`\`bash\ncp .env.example .env\ndocker compose up --build\n\`\`\`\n\n## Ports and URLs\n\n${ports.map((port) => `- ${port.name}: host ${port.external} -> container ${port.internal}${port.url ? ` (${port.url})` : ""}`).join("\n")}\n\nSwagger URL: http://localhost:\${API_APP_PORT}/swagger\n\n## Credentials\n\n${this.credentials(selection).map((credential) => `- ${credential.service}: user=${credential.username} password=${credential.password} ${credential.note}`).join("\n")}\n\n## API usage examples\n\n\`\`\`bash\ncurl http://localhost:\${API_APP_PORT}/health\ncurl http://localhost:\${API_APP_PORT}/jobs\ncurl -X POST http://localhost:\${API_APP_PORT}/jobs -H 'content-type: application/json' -d '{"title":"Create Demo Job"}'\n\`\`\`\n\n## Docker commands\n\n\`\`\`bash\ndocker compose ps\ndocker compose logs -f\ndocker compose down -v\n\`\`\`\n\n## Environment variables\n\nAll ports and credentials are configured through .env. Start from .env.example.\n\n## Troubleshooting\n\n- If a host port is busy, change the corresponding *_APP_PORT in .env.\n- If a service is unhealthy, run docker compose logs <service>.\n- Recreate clean state with docker compose down -v.\n\n## Project structure\n\n- backend/\n- frontend/\n- database/\n- docker-compose.yml\n- openapi.yaml\n- scripts/healthcheck.sh\n\nProject folder: ${slug}\n`;
+    return `# ${name}\n\nGenerated by GoneOps QuickStart Edition: a local-first Vercel for backend stacks.\n\n## Architecture overview\n\n${selection.frontend} frontend, ${selection.backend} backend API, ${selection.database}, and ${selection.infrastructure.join(", ")} run together on Docker Compose automatic service networking.\n\n## Service list\n\n${this.generatedServices(selection).map((service) => `- ${service}`).join("\n")}\n\n## Local self-hosted deployment flow
+
+1. Select stack in QuickStart.
+2. Generate project.
+3. Create repository in Gitea.
+4. Push generated project automatically.
+5. Trigger Woodpecker CI automatically.
+6. Build containers.
+7. Start Docker Compose sandbox.
+8. Open sandbox URL: /quickstart/projects/${slug}/sandbox
+
+## Startup steps\n\n\`\`\`bash\ncp .env.example .env\ndocker compose up -d --build\n\`\`\`\n\n## Ports and URLs\n\n${ports.map((port) => `- ${port.name}: host ${port.external} -> container ${port.internal}${port.url ? ` (${port.url})` : ""}`).join("\n")}\n\nSwagger URL: http://localhost:\${API_APP_PORT}/swagger\n\n## Credentials\n\n${this.credentials(selection).map((credential) => `- ${credential.service}: user=${credential.username} password=${credential.password} ${credential.note}`).join("\n")}\n\n## API usage examples\n\n\`\`\`bash\ncurl http://localhost:\${API_APP_PORT}/health\ncurl http://localhost:\${API_APP_PORT}/jobs\ncurl -X POST http://localhost:\${API_APP_PORT}/jobs -H 'content-type: application/json' -d '{"title":"Create Demo Job"}'\n\`\`\`\n\n## Docker commands\n\n\`\`\`bash\ndocker compose ps\ndocker compose logs -f\ndocker compose down -v\n\`\`\`\n\n## Environment variables\n\nAll ports and credentials are configured through .env. Start from .env.example.\n\n## Troubleshooting\n\n- If a host port is busy, change the corresponding *_APP_PORT in .env.\n- If a service is unhealthy, run docker compose logs <service>.\n- Recreate clean state with docker compose down -v.\n\n## Project structure\n\n- backend/\n- frontend/\n- database/\n- .woodpecker.yml\n- docker-compose.yml\n- openapi.yaml\n- scripts/healthcheck.sh\n\nProject folder: ${slug}\n`;
   }
 
   private validate(files: QuickStartGeneratedFile[], selection: StackSelection, options: { includeReadme: boolean; includeDockerCompose: boolean; includeCi: boolean; includeHelloWorld: boolean }) {
     const required = [
       ...(options.includeReadme ? ["README.md"] : []),
       ...(options.includeDockerCompose ? ["docker-compose.yml"] : []),
-      ...(options.includeCi ? [".github/workflows/ci.yml"] : []),
+      ...(options.includeCi ? [".woodpecker.yml"] : []),
       ".env.example",
       "Makefile",
       "openapi.yaml",
@@ -494,8 +616,8 @@ app.listen(Number(port), () => console.log("api listening on " + port));
     const joined = files.map((file) => file.content).join("\n");
     const markers = ["/health", "/swagger", "/jobs", "Create Demo Job", "${API_APP_PORT", "${API_PORT", selection.database];
     if (options.includeHelloWorld) markers.push("/hello", "Hello World");
-    if (options.includeDockerCompose) markers.push("docker compose up --build");
-    if (options.includeCi) markers.push("actions/checkout@v4");
+    if (options.includeDockerCompose) markers.push("docker compose up -d --build");
+    if (options.includeCi) markers.push("Woodpecker", "docker compose config --quiet", "docker compose build");
     for (const marker of markers) {
       if (!joined.includes(marker)) throw new Error(`Missing QuickStart generated marker: ${marker}`);
     }

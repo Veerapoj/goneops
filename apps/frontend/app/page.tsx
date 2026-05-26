@@ -25,7 +25,7 @@ const agents = [
 const decisions = [
   "Local-first MVP before external platform integrations",
   "Generator returns validated files; disk persistence/download remains post-MVP",
-  "Git/CI generation is local template output, not remote GitHub execution",
+  "Git/CI generation targets local Gitea and Woodpecker, not GitHub",
   "Observability baseline is local structured logging and starter contracts"
 ];
 
@@ -58,7 +58,7 @@ const generatedStructure = [
   "docs/system-diagram.md",
   "docs/deployment-diagram.md",
   "docs/api-contract.md",
-  ".github/workflows/ci.yml",
+  ".woodpecker.yml",
   "scripts/init-git.sh",
   "apps/api/src/observability.ts",
   "apps/api/src/health.ts",

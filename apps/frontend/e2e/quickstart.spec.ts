@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 test("QuickStart generates a real project and opens README project page", async ({ page }) => {
   await page.goto("/quickstart");
 
-  await expect(page.getByRole("heading", { name: "Generate a runnable local project." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Generate, push, build, and sandbox locally." })).toBeVisible();
   await expect(page.getByText("Create Project", { exact: true })).toBeVisible();
 
   await page.getByLabel("Project Name:").fill("goneops-demo");
@@ -13,7 +13,7 @@ test("QuickStart generates a real project and opens README project page", async 
   await page.getByLabel("RabbitMQ").check();
   await expect(page.getByLabel("Generate README")).toBeChecked();
   await expect(page.getByLabel("Generate Docker Compose")).toBeChecked();
-  await expect(page.getByLabel("Generate CI/CD")).toBeChecked();
+  await expect(page.getByLabel("Generate Woodpecker CI/CD")).toBeChecked();
   await expect(page.getByLabel("Generate Hello World")).toBeChecked();
 
   await page.getByRole("button", { name: "Generate Project" }).click();
@@ -25,12 +25,16 @@ test("QuickStart generates a real project and opens README project page", async 
   await expect(page.getByText("Generated files")).toBeVisible();
   await expect(page.getByText("File Preview")).toBeVisible();
   await expect(page.getByText("# goneops-demo")).toBeVisible();
-  await expect(page.getByText("docker compose up --build")).toBeVisible();
+  await expect(page.getByText("docker compose up -d --build")).toBeVisible();
   await expect(page.getByText("curl http://localhost:${API_APP_PORT}/health")).toBeVisible();
-  await page.getByRole("button", { name: "goneops-demo/.github/workflows/ci.yml" }).click();
+  await page.getByRole("button", { name: "goneops-demo/.woodpecker.yml" }).click();
   await expect(page.getByText("Selected file")).toBeVisible();
-  await expect(page.getByText("name: quickstart-ci")).toBeVisible();
-  await expect(page.getByText("actions/checkout@v4")).toBeVisible();
+  await expect(page.getByText("pipeline:")).toBeVisible();
+  await expect(page.getByText("docker compose build")).toBeVisible();
+
+  await page.goto("/quickstart/projects/goneops-demo/sandbox");
+  await expect(page.getByText("QuickStart Sandbox")).toBeVisible();
+  await expect(page.getByText("Build and startup validation logs")).toBeVisible();
 
   await page.goto("/quickstart");
   await expect(page.getByText("Created Projects")).toBeVisible();

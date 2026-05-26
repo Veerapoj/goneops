@@ -20,8 +20,8 @@ export default defineConfig({
   },
   webServer: [
     {
-      command: "cd ../.. && BACKEND_PORT=4100 npm --workspace apps/backend start",
-      url: "http://127.0.0.1:4100/health",
+      command: "cd ../.. && BACKEND_PORT=4000 npm --workspace apps/backend start",
+      url: "http://127.0.0.1:4000/health",
       reuseExistingServer: !process.env.CI,
       timeout: 30_000
     },

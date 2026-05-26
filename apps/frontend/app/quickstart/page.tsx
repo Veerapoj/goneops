@@ -15,7 +15,7 @@ const caches = ["Redis", "None"];
 const queues = ["RabbitMQ", "None"];
 const projectIndexKey = "quickstart:projects";
 
-type ProjectSummary = { name: string; slug: string; url: string; stackSummary: string; generatedAt: string; fileCount: number };
+type ProjectSummary = { name: string; slug: string; url: string; stackSummary: string; generatedAt: string; fileCount: number; sandboxUrl?: string; repositoryUrl?: string; pipelineUrl?: string };
 
 type GenerateResponse = {
   project: { name: string; slug: string; url: string; generatedAt: string };
@@ -23,6 +23,7 @@ type GenerateResponse = {
   readme: string;
   files: { path: string; content: string }[];
   generationLogs: string[];
+  automation: { repositoryUrl: string; pipelineUrl: string; sandboxUrl: string; logs: string[]; sourceControl: string; cicd: string; runtime: string };
 };
 
 function projectSummaryFromGenerated(generated: GenerateResponse): ProjectSummary {
@@ -32,7 +33,10 @@ function projectSummaryFromGenerated(generated: GenerateResponse): ProjectSummar
     url: generated.project.url,
     stackSummary: generated.stackSummary,
     generatedAt: generated.project.generatedAt,
-    fileCount: generated.files.length
+    fileCount: generated.files.length,
+    sandboxUrl: generated.automation.sandboxUrl,
+    repositoryUrl: generated.automation.repositoryUrl,
+    pipelineUrl: generated.automation.pipelineUrl
   };
 }
 
@@ -178,7 +182,7 @@ export default function QuickStartPage() {
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-black text-xs font-bold text-white">GO</div>
             <div>
               <div className="font-semibold">GoneOps QuickStart Edition</div>
-              <div className="text-xs text-[#666666]">One Click Project Bootstrap</div>
+              <div className="text-xs text-[#666666]">Local-first Vercel for backend stacks</div>
             </div>
           </div>
           <Link className="rounded-full border border-[#dddddd] px-3 py-1 text-xs text-[#666666]" href="/">
@@ -189,8 +193,8 @@ export default function QuickStartPage() {
         <div className="grid gap-8 py-10 lg:grid-cols-[1fr_420px]">
           <section className="rounded-[28px] border border-[#e5e5e5] bg-white p-6 shadow-2xl shadow-black/5">
             <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[#777]">Create Project</div>
-            <h1 className="mt-3 text-4xl font-semibold tracking-[-0.04em]">Generate a runnable local project.</h1>
-            <p className="mt-3 text-sm leading-6 text-[#666]">This is now wired to the QuickStart backend API. Click generate to create project files, then open a project URL that renders the generated README.</p>
+            <h1 className="mt-3 text-4xl font-semibold tracking-[-0.04em]">Generate, push, build, and sandbox locally.</h1>
+            <p className="mt-3 text-sm leading-6 text-[#666]">QuickStart now targets a fully local self-hosted path: Gitea source control, Woodpecker CI, Docker Compose runtime, and an automatic sandbox URL after generation.</p>
 
             <label className="mt-8 block text-sm font-semibold" htmlFor="quickstart-project-name">Project Name:</label>
             <input id="quickstart-project-name" className="mt-2 w-full rounded-xl border border-[#dddddd] px-4 py-3 font-mono text-sm outline-none focus:border-black" value={projectName} onChange={(event) => setProjectName(event.target.value)} />
@@ -203,7 +207,7 @@ export default function QuickStartPage() {
             <div className="mt-6 grid gap-3 rounded-2xl border border-[#eeeeee] bg-[#fbfbfb] p-4">
               <Checkbox label="Generate README" checked={includeReadme} onChange={setIncludeReadme} />
               <Checkbox label="Generate Docker Compose" checked={includeDockerCompose} onChange={setIncludeDockerCompose} />
-              <Checkbox label="Generate CI/CD" checked={includeCi} onChange={setIncludeCi} />
+              <Checkbox label="Generate Woodpecker CI/CD" checked={includeCi} onChange={setIncludeCi} />
               <Checkbox label="Generate Hello World" checked={includeHelloWorld} onChange={setIncludeHelloWorld} />
             </div>
 
@@ -278,7 +282,7 @@ export default function QuickStartPage() {
           <aside className="rounded-[28px] border border-[#e5e5e5] bg-white p-5 shadow-2xl shadow-black/10">
             <div className="flex items-center justify-between">
               <div>
-                <div className="text-sm font-semibold">Manual Result</div>
+                <div className="text-sm font-semibold">Local-first automation</div>
                 <div className="text-xs text-[#666666]">{stack} + {database} + {cache} + {queue}</div>
               </div>
               <div className="rounded-full bg-[#f5f5f5] px-3 py-1 text-xs text-[#666666]">{status}</div>
@@ -287,7 +291,8 @@ export default function QuickStartPage() {
             <div className="mt-5 rounded-2xl bg-[#050505] p-4 font-mono text-xs leading-6 text-[#ededed]">
               <div>POST {apiBase}/quickstart/generate</div>
               <div>Project URL: /quickstart/projects/goneops-demo</div>
-              <div>README preview after generation</div>
+              <div>Sandbox URL: /quickstart/projects/goneops-demo/sandbox</div>
+              <div>Gitea → Woodpecker CI → Docker Compose</div>
             </div>
 
             {result ? (
@@ -295,8 +300,13 @@ export default function QuickStartPage() {
                 <Link className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 font-semibold text-emerald-800" href={result.project.url}>
                   Open generated project: {result.project.slug}
                 </Link>
+                <Link className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 font-semibold text-sky-800" href={result.automation.sandboxUrl}>
+                  Open sandbox URL: {result.automation.sandboxUrl}
+                </Link>
                 <div className="text-xs text-[#666]">{result.stackSummary}</div>
+                <div className="rounded-xl bg-[#f7f7f7] p-3 text-xs text-[#555]">{result.automation.sourceControl} → {result.automation.cicd} → {result.automation.runtime}</div>
                 {result.generationLogs.map((log) => <div key={log} className="font-mono text-xs">{log}</div>)}
+                {result.automation.logs.map((log) => <div key={log} className="font-mono text-xs text-[#444]">{log}</div>)}
               </div>
             ) : (
               <div className="mt-5 text-sm leading-6 text-[#666]">No generated project yet. Fill the form and click Generate Project.</div>

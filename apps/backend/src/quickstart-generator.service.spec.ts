@@ -15,7 +15,9 @@ test("quickstart options expose real MVP stack components", () => {
   const options = service.getOptions();
   assert.equal(options.edition, "GoneOps QuickStart Edition");
   assert.equal(options.goal, "One Click Project Bootstrap");
-  assert.deepEqual(options.flow, ["select stack", "click generate", "run local project"]);
+  assert.deepEqual(options.flow, ["select stack", "generate project", "create Gitea repo", "push project", "trigger Woodpecker CI", "build containers", "start sandbox", "open sandbox URL"]);
+  assert.equal(options.localPlatform.sourceControl, "Gitea");
+  assert.equal(options.localPlatform.cicd, "Woodpecker CI");
   for (const component of ["NextJS", "React", "Vue", "Static HTML", "Go Fiber", "NestJS", "ExpressJS", "FastAPI", "PostgreSQL", "MySQL", "MongoDB", "Redis", "RabbitMQ", "MinIO"]) {
     assert.ok(JSON.stringify(options).includes(component), component);
   }
@@ -29,11 +31,11 @@ test("quickstart generator creates real runnable project outputs for representat
     assert.ok(output.stackSummary.includes(combo.backend));
     assert.ok(output.swaggerUrl.includes("/swagger"));
 
-    const required = ["README.md", "docker-compose.yml", ".env.example", "Makefile", "openapi.yaml", "backend/Dockerfile", "frontend/Dockerfile", "scripts/healthcheck.sh"];
+    const required = ["README.md", "docker-compose.yml", ".woodpecker.yml", ".env.example", "Makefile", "openapi.yaml", "backend/Dockerfile", "frontend/Dockerfile", "scripts/healthcheck.sh", "scripts/local-cicd.sh", "scripts/start-sandbox.sh"];
     for (const path of required) assert.ok(output.files.some((file) => file.path.endsWith(path)), `${combo.backend} missing ${path}`);
 
     const joined = output.files.map((file) => file.content).join("\n");
-    for (const marker of ["/health", "/swagger", "/jobs", "Create Demo Job", combo.database, "docker compose up --build", "${API_APP_PORT", "${API_PORT"]) {
+    for (const marker of ["/health", "/swagger", "/jobs", "Create Demo Job", combo.database, "docker compose up -d --build", "Woodpecker", "docker compose config --quiet", "${API_APP_PORT", "${API_PORT"]) {
       assert.ok(joined.includes(marker), `${combo.backend} missing ${marker}`);
     }
   }
@@ -49,7 +51,12 @@ test("go fiber postgres redis rabbitmq example includes demo workflow and creden
   assert.ok(output.urls.some((item) => item.name === "Swagger"));
   assert.ok(output.credentials.some((item) => item.service === "PostgreSQL"));
   assert.ok(output.apiExamples.some((item) => item.includes("POST")));
-  assert.ok(output.dockerCommands.includes("docker compose up --build"));
+  assert.ok(output.dockerCommands.includes("docker compose up -d --build"));
+  assert.equal(output.automation.sourceControl, "Gitea");
+  assert.equal(output.automation.cicd, "Woodpecker CI");
+  assert.equal(output.automation.runtime, "Docker Compose");
+  assert.equal(output.automation.sandboxUrl, "/quickstart/projects/demo-job-flow/sandbox");
+  assert.ok(output.automation.logs.some((line) => line.includes("Create Gitea repository")));
   const readme = output.files.find((file) => file.path.endsWith("README.md"))?.content ?? "";
   assert.ok(readme.includes("PostgreSQL"));
   assert.ok(readme.includes("RabbitMQ"));
@@ -79,4 +86,16 @@ test("quickstart generated files avoid excluded advanced platform features and s
     assert.doesNotMatch(joined, new RegExp(forbidden, "i"));
   }
   assert.doesNotMatch(joined, /ghp_|sk-[A-Za-z0-9]|BEGIN (RSA|OPENSSH|PRIVATE) KEY/);
+});
+
+test("quickstart replaces GitHub Actions with local Gitea and Woodpecker CI output", () => {
+  const output = service.generate({ name: "Local Vercel", frontend: "Static HTML", backend: "ExpressJS", database: "PostgreSQL", infrastructure: ["Redis"] });
+  const paths = output.files.map((file) => file.path);
+  assert.ok(paths.some((path) => path.endsWith(".woodpecker.yml")));
+  assert.ok(!paths.some((path) => path.includes(".github/workflows")));
+  const joined = output.files.map((file) => file.content).join("\n");
+  assert.ok(joined.includes("docker compose build"));
+  assert.ok(joined.includes("docker compose up -d --build"));
+  assert.ok(output.automation.repositoryUrl.includes("gitea") || output.automation.repositoryUrl.includes("localhost:3001"));
+  assert.ok(output.automation.pipelineUrl.includes("localhost:8000"));
 });

@@ -78,7 +78,7 @@ test("project generator output remains visible inside the active project brain",
     "Project Generator Output",
     "README.md",
     "docker-compose.yml",
-    ".github/workflows/ci.yml",
+    ".woodpecker.yml",
     "scripts/init-git.sh",
     "apps/api/src/observability.ts",
     "docs/observability.md"
