@@ -374,7 +374,7 @@ export class QuickStartGeneratorService {
     const selection = {
       frontend,
       backend: (request.backend ?? stackBackend ?? "Go Fiber") as QuickStartBackend,
-      database: request.database ?? "PostgreSQL",
+      database: request.database ?? "MySQL",
       infrastructure
     };
     if (!FRONTENDS.includes(selection.frontend)) throw new Error(`Unsupported QuickStart frontend: ${selection.frontend}`);
@@ -689,12 +689,17 @@ app.listen(Number(port), () => console.log("api listening on " + port));
   private renderSeedFiles(selection: StackSelection): QuickStartGeneratedFile[] {
     if (selection.database === "PostgreSQL") return [{ path: "database/seed.sql", content: "CREATE TABLE IF NOT EXISTS jobs (id TEXT PRIMARY KEY, title TEXT NOT NULL, status TEXT NOT NULL);\nINSERT INTO jobs (id, title, status) VALUES ('demo-1', 'Seeded demo job', 'seeded') ON CONFLICT (id) DO NOTHING;\n" }];
     if (selection.database === "MySQL") return [{ path: "database/seed.sql", content: "CREATE TABLE IF NOT EXISTS jobs (id VARCHAR(64) PRIMARY KEY, title TEXT NOT NULL, status VARCHAR(32) NOT NULL);\nINSERT IGNORE INTO jobs (id, title, status) VALUES ('demo-1', 'Seeded demo job', 'seeded');\n" }];
-    return [{ path: "database/seed.js", content: "db.jobs.updateOne({id:'demo-1'}, {$set:{id:'demo-1', title:'Seeded demo job', status:'seeded'}}, {upsert:true});\n" }];
+    if (selection.database === "MongoDB") return [{ path: "database/seed.js", content: "db.jobs.updateOne({id:'demo-1'}, {$set:{id:'demo-1', title:'Seeded demo job', status:'seeded'}}, {upsert:true});\n" }];
+    return [];
   }
 
   private renderDockerCompose(selection: StackSelection) {
     const db = this.databaseCompose(selection.database);
     const infra = selection.infrastructure.flatMap((item) => this.infrastructureCompose(item));
+    const dependencies = [
+      ...(selection.database === "None" ? [] : [this.databaseService(selection.database)]),
+      ...selection.infrastructure.map((item) => item.toLowerCase())
+    ];
     return [
       "services:",
       "  frontend:",
@@ -711,9 +716,7 @@ app.listen(Number(port), () => console.log("api listening on " + port));
       "      - .env",
       "    ports:",
       "      - \"${API_APP_PORT:?API_APP_PORT must be set}:${API_PORT:?API_PORT must be set}\"",
-      "    depends_on:",
-      `      - ${this.databaseService(selection.database)}`,
-      ...selection.infrastructure.map((item) => `      - ${item.toLowerCase()}`),
+      ...(dependencies.length ? ["    depends_on:", ...dependencies.map((dependency) => `      - ${dependency}`)] : []),
       "    healthcheck:",
       "      test: [\"CMD-SHELL\", \"wget -qO- http://127.0.0.1:${API_PORT}/health || exit 1\"]",
       "      interval: 10s",
@@ -726,6 +729,7 @@ app.listen(Number(port), () => console.log("api listening on " + port));
   }
 
   private databaseCompose(database: QuickStartDatabase) {
+    if (database === "None") return [];
     if (database === "PostgreSQL") return ["  postgres:", "    image: postgres:16-alpine", "    environment:", "      POSTGRES_DB: ${DB_NAME}", "      POSTGRES_USER: ${DB_USER}", "      POSTGRES_PASSWORD: ${DB_PASSWORD}", "    ports:", "      - \"${POSTGRES_APP_PORT}:5432\"", "    volumes:", "      - ./database/seed.sql:/docker-entrypoint-initdb.d/seed.sql:ro"];
     if (database === "MySQL") return ["  mysql:", "    image: mysql:8", "    environment:", "      MYSQL_DATABASE: ${DB_NAME}", "      MYSQL_USER: ${DB_USER}", "      MYSQL_PASSWORD: ${DB_PASSWORD}", "      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}", "    ports:", "      - \"${MYSQL_APP_PORT}:3306\"", "    volumes:", "      - ./database/seed.sql:/docker-entrypoint-initdb.d/seed.sql:ro"];
     return ["  mongo:", "    image: mongo:7", "    environment:", "      MONGO_INITDB_ROOT_USERNAME: ${DB_USER}", "      MONGO_INITDB_ROOT_PASSWORD: ${DB_PASSWORD}", "      MONGO_INITDB_DATABASE: ${DB_NAME}", "    ports:", "      - \"${MONGO_APP_PORT}:27017\"", "    volumes:", "      - ./database/seed.js:/docker-entrypoint-initdb.d/seed.js:ro"];

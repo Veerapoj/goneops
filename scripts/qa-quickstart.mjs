@@ -140,7 +140,34 @@ try {
   assert.ok(ps.includes("redis"), "docker compose ps should include redis service");
   assert.ok(ps.includes("rabbitmq"), "docker compose ps should include rabbitmq service");
 
-  log("PASS: generation, file validation, Docker Compose, sandbox HTTP 200, MySQL, Redis, RabbitMQ, jobs endpoint");
+  log("validate live QuickStart automation uses an isolated generated workspace and compose project");
+  const liveService = new QuickStartGeneratorService();
+  const live = await liveService.generateAndAutomate({
+    name: "Live Auto Smoke",
+    frontend: "Static HTML",
+    backend: "ExpressJS",
+    database: "None",
+    infrastructure: [],
+    includeReadme: true,
+    includeDockerCompose: true,
+    includeCi: true,
+    includeHelloWorld: true
+  });
+  try {
+    assert.ok(live.automation.workspacePath.includes(".goneops/quickstart-projects/live-auto-smoke"));
+    assert.equal(live.automation.composeProject, "qs-live-auto-smoke");
+    assert.ok(!live.automation.workspacePath.endsWith("goneops-work"), "sandbox workspace must not be the GoneOps repo root");
+    assert.ok(live.automation.steps.some((step) => step.step === "Initialize isolated Git repository" && step.status === "success"));
+    assert.ok(live.automation.steps.some((step) => step.step === "Start sandbox" && step.status === "success"));
+    assert.ok(live.automation.steps.some((step) => step.step === "Create Gitea repository"));
+    const livePs = docker(`docker compose -p ${live.automation.composeProject} ps --format json`, { cwd: live.automation.workspacePath, timeout: 120_000 });
+    assert.ok(livePs.includes("api"), "live automation compose ps should include api service");
+  } finally {
+    docker(`docker compose -p ${live.automation.composeProject} down -v --remove-orphans`, { cwd: live.automation.workspacePath, timeout: 180_000, stdio: "inherit" });
+    liveService.deleteProject(live.project.slug, { confirmationName: live.project.name });
+  }
+
+  log("PASS: generation, file validation, Docker Compose, sandbox HTTP 200, MySQL, Redis, RabbitMQ, jobs endpoint, isolated live automation");
 } finally {
   try { docker(`docker compose -p ${composeProject} logs --no-color --tail=120`, { cwd: tempRoot, timeout: 120_000 }); } catch {}
   try { docker(`docker compose -p ${composeProject} down -v --remove-orphans`, { cwd: tempRoot, timeout: 180_000, stdio: "inherit" }); } catch {}

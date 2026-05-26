@@ -13,7 +13,7 @@ function getApiBase() {
 type GeneratedProject = {
   project: { name: string; slug: string };
   stackSummary: string;
-  automation?: { repositoryUrl: string; pipelineUrl: string; sandboxUrl: string; logs: string[]; sourceControl: string; cicd: string; runtime: string };
+  automation?: { repositoryUrl: string; pipelineUrl: string; sandboxUrl: string; logs: string[]; sourceControl: string; cicd: string; runtime: string; workspacePath?: string; composeProject?: string };
   urls: { name: string; url: string }[];
   containerStatus: { service: string; status: string; health: string }[];
 };
@@ -62,6 +62,8 @@ export default function QuickStartSandboxPage() {
               <h1 className="mt-3 text-3xl font-semibold">{project.project.name}</h1>
               <div className="mt-2 text-sm text-[#555]">{project.stackSummary}</div>
               <div className="mt-4 font-mono text-sm">/quickstart/projects/{project.project.slug}/sandbox</div>
+              <div className="mt-2 font-mono text-xs text-[#666]">workspace: {project.automation?.workspacePath ?? "not persisted"}</div>
+              <div className="mt-1 font-mono text-xs text-[#666]">compose: {project.automation?.composeProject ?? "not started"}</div>
             </section>
             <section className="grid gap-4 md:grid-cols-3">
               <Card title="Source Control" value={project.automation?.repositoryUrl ?? "Gitea pending"} />
