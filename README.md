@@ -177,6 +177,44 @@ docker compose up -d
 
 ---
 
+## 📦 Deploy on Another Machine
+
+Clone and run on any machine with Docker — no extra setup needed.
+
+```bash
+# 1. Install Docker (Linux)
+curl -fsSL https://get.docker.com | sh
+sudo usermod -aG docker $USER
+newgrp docker
+
+# 2. Clone
+git clone https://github.com/Veerapoj/goneops.git
+cd goneops
+
+# 3. Start
+docker compose up -d
+
+# 4. Verify
+docker compose ps
+
+# 5. Open
+curl http://localhost:3000
+```
+
+**Key notes when deploying to a fresh machine:**
+
+| Item | What to expect |
+|------|----------------|
+| Docker images | Auto-built on first `docker compose up -d` (2-5 min) |
+| Database | Init schema + seed data auto-loaded from `database/init.sql` |
+| Ports | Defaults: 3000, 4000, 5432, 6379, 5672, 15672 — change in `docker-compose.yml` if busy |
+| Docker socket | Backend auto-mounts `/var/run/docker.sock` for sandbox Docker operations |
+| Configuration | All defaults work out of the box — no `.env` file required |
+| node_modules | Built inside Docker images — not needed on host |
+| ContextOS files | `.contextos/`, `agents/`, `runtime/`, `skills/`, `workflows/` are optional orchestration configs — not needed to run the app |
+
+---
+
 ## ❌ Troubleshooting
 
 | Problem | Solution |
