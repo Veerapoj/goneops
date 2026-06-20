@@ -1,0 +1,82 @@
+name: {{PREFIX}}-sandbox
+
+services:
+  web:
+    build: .
+    container_name: {{PREFIX}}_web
+    ports:
+      - "{{WEB_PORT}}:8080"
+    environment:
+      - PORT=8080
+      - PGHOST=db
+      - PGPORT=5432
+      - PGDATABASE={{DB_NAME}}
+      - PGUSER={{DB_USER}}
+      - PGPASSWORD={{DB_PASS}}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - RABBITMQ_URL=amqp://{{MQ_USER}}:{{MQ_PASS}}@mq:5672
+    networks:
+      - goneops_net
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  db:
+    image: postgres:15-alpine
+    container_name: {{PREFIX}}_db
+    ports:
+      - "{{DB_PORT}}:5432"
+    environment:
+      - POSTGRES_DB={{DB_NAME}}
+      - POSTGRES_USER={{DB_USER}}
+      - POSTGRES_PASSWORD={{DB_PASS}}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U {{DB_USER}} -d {{DB_NAME}}"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    networks:
+      - goneops_net
+
+  redis:
+    image: redis:7-alpine
+    container_name: {{PREFIX}}_redis
+    ports:
+      - "{{REDIS_PORT}}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    networks:
+      - goneops_net
+
+  mq:
+    image: rabbitmq:3.12-alpine
+    container_name: {{PREFIX}}_mq
+    ports:
+      - "{{MQ_PORT}}:5672"
+    environment:
+      - RABBITMQ_DEFAULT_USER={{MQ_USER}}
+      - RABBITMQ_DEFAULT_PASS={{MQ_PASS}}
+    healthcheck:
+      test: ["CMD-SHELL", "su-exec rabbitmq rabbitmq-diagnostics -q check_port_connectivity"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+    networks:
+      - goneops_net
+
+networks:
+  goneops_net:
+    external: true

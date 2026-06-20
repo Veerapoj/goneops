@@ -1,0 +1,30 @@
+{
+  "summary": "Local-first two-plane architecture for the GoneOps MVP: a React dashboard and layered Express control plane manage one generated Docker Compose sandbox per environment, with PostgreSQL as the ownership, metadata, lifecycle, and recovery authority.",
+  "components": [
+    "Root Docker Compose control plane with nginx, React/Vite/TailwindCSS frontend, Express backend, PostgreSQL, Redis, and RabbitMQ on goneops_net",
+    "React Router dashboard shell and twelve API-backed pages with shared project and environment selection",
+    "Layered Express HTTP controllers, application services, PostgreSQL repositories, and injectable filesystem, Docker, HTTP proxy, log, and terminal adapters",
+    "PostgreSQL schema for projects, environments, services, deployments, environment-scoped pipeline runs and steps, secrets, and transactional sandbox port reservations",
+    "Atomic template-based sandbox generator producing Express source, Dockerfile, docker-compose.yml, environment files, and README.md in an owned working directory",
+    "Docker Compose lifecycle, logs, bounded sandbox HTTP proxy, and container-only WebSocket terminal transport with an explicit backend-client/host-daemon filesystem boundary",
+    "Six-step persisted simulated CI/CD pipeline with pollable asynchronous execution and deployment metadata",
+    "Startup operation reconciler and idempotent lifecycle/pipeline executors for persisted transitional states",
+    "nginx same-origin API and WebSocket proxy with SPA fallback"
+  ],
+  "constraints": [
+    "The required 14 REST endpoint paths and methods remain stable; supporting endpoints are additive and environment-scoped.",
+    "Routes cannot directly access SQL, filesystem APIs, child processes, Docker, or raw sandbox HTTP.",
+    "Long-running lifecycle and pipeline operations return HTTP 202 after persisting an owned, pollable transitional state; in-memory jobs and mutexes are never authoritative.",
+    "Environment lifecycle transitions use PostgreSQL compare-and-set updates; pipeline runs allow at most one active run per environment.",
+    "Sandbox generation reserves ports transactionally, renders into a temporary directory, atomically replaces files, and rolls back metadata and filesystem state on failure.",
+    "Every environment-scoped operation verifies project ownership; file reads also require an allowlist, realpath confinement, and bounded file size.",
+    "Docker commands use fixed executable argument arrays, bounded timeouts, and output limits; request data is never interpolated into a shell.",
+    "Generated Compose files cannot use backend-container-local host bind paths; working_dir is a control-plane CLI and file-browser path, while sandbox persistence uses images, named volumes, and goneops_net.",
+    "Persisted transitional lifecycle and pipeline states must be idempotently reconciled after backend restart without duplicate steps, deployments, services, secrets, or ports.",
+    "Terminal access is localhost-only and restricted to the owned running sandbox web container, never the backend container or host shell.",
+    "Secrets are localhost-only plaintext for the MVP, masked by default, excluded from logs, and documented as not production-safe.",
+    "Frontend runtime data must come from real backend APIs; unsupported services and controls are disabled instead of mocked.",
+    "The iframe preview is best-effort; server-side Test API is the reliable integration path.",
+    "Implementation is conformant only after all verification gates in ARCHITECTURE.md pass."
+  ]
+}

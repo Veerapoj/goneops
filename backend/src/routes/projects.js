@@ -1,0 +1,350 @@
+const express = require('express');
+const router = express.Router();
+const { listProjects, getProject, createProject } = require('../services/projectService');
+const { createEnvironment } = require('../services/environmentService');
+const { listPipelineRuns, runPipeline } = require('../services/pipelineService');
+const { generateSandbox } = require('../sandbox/generator');
+const { runSandbox, stopSandbox, restartSandbox, getSandboxLogs, testApi } = require('../sandbox/runner');
+const { query } = require('../lib/db');
+const fs = require('fs');
+const path = require('path');
+const ALLOWED_FILES = new Set([
+  'README.md',
+  'package.json',
+  'Dockerfile',
+  'docker-compose.yml',
+  '.env',
+  '.env.example',
+  path.join('src', 'index.js'),
+]);
+const MAX_FILE_SIZE = 256 * 1024;
+
+// GET /api/projects
+router.get('/projects', async (req, res, next) => {
+  try { res.json(await listProjects()); } catch (e) { next(e); }
+});
+
+// POST /api/projects
+router.post('/projects', async (req, res, next) => {
+  try {
+    const { name } = req.body;
+    if (!name) return res.status(400).json({ error: { code: 'validation_error', message: 'Project name required' } });
+    res.status(201).json(await createProject(name));
+  } catch (e) { next(e); }
+});
+
+// GET /api/projects/:id
+router.get('/projects/:id', async (req, res, next) => {
+  try {
+    const project = await getProject(req.params.id);
+    if (!project) return res.status(404).json({ error: { code: 'not_found', message: 'Project not found' } });
+    res.json(project);
+  } catch (e) { next(e); }
+});
+
+// POST /api/projects/:id/environments
+router.post('/projects/:id/environments', async (req, res, next) => {
+  try {
+    const { name } = req.body;
+    if (!name) return res.status(400).json({ error: { code: 'validation_error', message: 'Environment name required' } });
+    const env = await createEnvironment(req.params.id, name);
+    res.status(201).json(env);
+  } catch (e) { next(e); }
+});
+
+// POST /api/projects/:id/generate-sandbox
+router.post('/projects/:id/generate-sandbox', async (req, res, next) => {
+  try {
+    const { environment_id } = req.body;
+    if (!environment_id) return res.status(400).json({ error: { code: 'validation_error', message: 'environment_id required' } });
+    const result = await generateSandbox(req.params.id, environment_id);
+    res.json(result);
+  } catch (e) { next(e); }
+});
+
+// POST /api/projects/:id/run
+router.post('/projects/:id/run', async (req, res, next) => {
+  try {
+    const { environment_id } = req.body;
+    if (!environment_id) return res.status(400).json({ error: { code: 'validation_error', message: 'environment_id required' } });
+    const result = await runSandbox(req.params.id, environment_id);
+    res.status(202).json(result);
+  } catch (e) { next(e); }
+});
+
+// POST /api/projects/:id/stop
+router.post('/projects/:id/stop', async (req, res, next) => {
+  try {
+    const { environment_id } = req.body;
+    if (!environment_id) return res.status(400).json({ error: { code: 'validation_error', message: 'environment_id required' } });
+    res.status(202).json(await stopSandbox(req.params.id, environment_id));
+  } catch (e) { next(e); }
+});
+
+// POST /api/projects/:id/restart
+router.post('/projects/:id/restart', async (req, res, next) => {
+  try {
+    const { environment_id } = req.body;
+    if (!environment_id) return res.status(400).json({ error: { code: 'validation_error', message: 'environment_id required' } });
+    const result = await restartSandbox(req.params.id, environment_id);
+    res.status(202).json(result);
+  } catch (e) { next(e); }
+});
+
+// POST /api/projects/:id/test-api
+router.post('/projects/:id/test-api', async (req, res, next) => {
+  try {
+    const { environment_id } = req.body;
+    if (!environment_id) return res.status(400).json({ error: { code: 'validation_error', message: 'environment_id required' } });
+    res.json(await testApi(req.params.id, environment_id));
+  } catch (e) { next(e); }
+});
+
+// GET /api/projects/:id/files
+router.get('/projects/:id/files', async (req, res, next) => {
+  try {
+    const { environment_id } = req.query;
+    if (!environment_id) return res.status(400).json({ error: { code: 'validation_error', message: 'environment_id query param required' } });
+    const env = await query(
+      'SELECT working_dir FROM environments WHERE id = $1 AND project_id = $2',
+      [environment_id, req.params.id]
+    );
+    if (!env.rows.length || !env.rows[0].working_dir) {
+      return res.status(404).json({ error: { code: 'not_found', message: 'Environment or working directory not found' } });
+    }
+    const workingDir = env.rows[0].working_dir;
+    const files = listFilesRecursive(workingDir, workingDir);
+    res.json({ files, working_dir: workingDir });
+  } catch (e) { next(e); }
+});
+
+// GET /api/projects/:id/files/content
+router.get('/projects/:id/files/content', async (req, res, next) => {
+  try {
+    const { environment_id, file_path } = req.query;
+    if (!environment_id || !file_path) return res.status(400).json({ error: { code: 'validation_error', message: 'environment_id and file_path required' } });
+    const env = await query(
+      'SELECT working_dir FROM environments WHERE id = $1 AND project_id = $2',
+      [environment_id, req.params.id]
+    );
+    if (!env.rows.length || !env.rows[0].working_dir) {
+      return res.status(404).json({ error: { code: 'not_found', message: 'Environment or working directory not found' } });
+    }
+    const workingDir = env.rows[0].working_dir;
+    const resolvedWorking = fs.realpathSync(workingDir);
+    const normalizedPath = path.normalize(file_path);
+    if (!ALLOWED_FILES.has(normalizedPath)) {
+      return res.status(403).json({ error: { code: 'path_forbidden', message: 'File is not in the generated-file allowlist' } });
+    }
+    const requestedPath = path.resolve(workingDir, file_path);
+
+    let resolvedRequested;
+    try {
+      resolvedRequested = fs.realpathSync(requestedPath);
+    } catch {
+      return res.status(404).json({ error: { code: 'not_found', message: 'File not found' } });
+    }
+
+    if (!resolvedRequested.startsWith(resolvedWorking + path.sep) && resolvedRequested !== resolvedWorking) {
+      return res.status(403).json({ error: { code: 'path_forbidden', message: 'Path traversal denied' } });
+    }
+    const stat = fs.statSync(resolvedRequested);
+    if (stat.isDirectory()) {
+      return res.status(400).json({ error: { code: 'validation_error', message: 'Path is a directory' } });
+    }
+    if (stat.size > MAX_FILE_SIZE) {
+      return res.status(413).json({ error: { code: 'validation_error', message: 'File exceeds the 256 KiB read limit' } });
+    }
+    const content = fs.readFileSync(resolvedRequested, 'utf-8');
+    res.json({ file_path, content, size: content.length });
+  } catch (e) { next(e); }
+});
+
+// GET /api/projects/:id/logs
+router.get('/projects/:id/logs', async (req, res, next) => {
+  try {
+    const { environment_id, tail } = req.query;
+    if (!environment_id) return res.status(400).json({ error: { code: 'validation_error', message: 'environment_id query param required' } });
+    res.json(await getSandboxLogs(req.params.id, environment_id, parseInt(tail) || 100));
+  } catch (e) { next(e); }
+});
+
+// GET /api/projects/:id/pipelines
+router.get('/projects/:id/pipelines', async (req, res, next) => {
+  try {
+    const { environment_id } = req.query;
+    res.json(await listPipelineRuns(req.params.id, environment_id || null));
+  } catch (e) { next(e); }
+});
+
+// POST /api/projects/:id/pipelines/run
+router.post('/projects/:id/pipelines/run', async (req, res, next) => {
+  try {
+    const { environment_id } = req.body;
+    if (!environment_id) return res.status(400).json({ error: { code: 'validation_error', message: 'environment_id required' } });
+    const result = await runPipeline(req.params.id, environment_id);
+    res.status(202).json(result);
+  } catch (e) { next(e); }
+});
+
+// GET /api/projects/:id/services
+router.get('/projects/:id/services', async (req, res, next) => {
+  try {
+    const { environment_id } = req.query;
+    if (!environment_id) return res.status(400).json({ error: { code: 'validation_error', message: 'environment_id query param required' } });
+    const env = await query(
+      'SELECT id FROM environments WHERE id = $1 AND project_id = $2',
+      [environment_id, req.params.id]
+    );
+    if (!env.rows.length) return res.status(404).json({ error: { code: 'not_found', message: 'Environment not found' } });
+    const { getEnvironmentServices } = require('../services/environmentService');
+    res.json(await getEnvironmentServices(environment_id));
+  } catch (e) { next(e); }
+});
+
+// GET /api/projects/:id/databases
+router.get('/projects/:id/databases', async (req, res, next) => {
+  try {
+    const { environment_id } = req.query;
+    if (!environment_id) return res.status(400).json({ error: { code: 'validation_error', message: 'environment_id query param required' } });
+    const env = await query(
+      'SELECT * FROM environments WHERE id = $1 AND project_id = $2',
+      [environment_id, req.params.id]
+    );
+    if (!env.rows.length) return res.status(404).json({ error: { code: 'not_found', message: 'Environment not found' } });
+    const services = await query(
+      "SELECT * FROM services WHERE environment_id = $1 AND type = 'database' ORDER BY id",
+      [environment_id]
+    );
+    const secrets = await query(
+      'SELECT * FROM secrets WHERE environment_id = $1 ORDER BY key',
+      [environment_id]
+    );
+    const ports = await query(
+      "SELECT * FROM sandbox_ports WHERE environment_id = $1 AND role = 'db'",
+      [environment_id]
+    );
+    const dbPort = ports.rows.length ? ports.rows[0].host_port : null;
+    const databaseUrl = secrets.rows.find((secret) => secret.key === 'DATABASE_URL')?.value || null;
+    const maskedDatabaseUrl = databaseUrl
+      ? databaseUrl.replace(/(postgres(?:ql)?:\/\/[^:]+:)[^@]+(@)/, '$1••••••••$2')
+      : null;
+    res.json({
+      databases: services.rows.map((service) => ({
+        ...service,
+        host: 'localhost',
+        port: dbPort || service.port,
+        database: service.config?.database,
+        username: service.config?.username,
+        password: '••••••••',
+        connection_string_masked: maskedDatabaseUrl,
+      })),
+      secrets: secrets.rows.map(({ key, updated_at }) => ({ key, updated_at })),
+      db_port: dbPort,
+      environment: env.rows[0],
+    });
+  } catch (e) { next(e); }
+});
+
+// GET /api/projects/:id/deployments
+router.get('/projects/:id/deployments', async (req, res, next) => {
+  try {
+    const { environment_id } = req.query;
+    let rows;
+    if (environment_id) {
+      rows = await query(
+        'SELECT * FROM deployments WHERE project_id = $1 AND environment_id = $2 ORDER BY created_at DESC',
+        [req.params.id, environment_id]
+      );
+    } else {
+      rows = await query(
+        'SELECT * FROM deployments WHERE project_id = $1 ORDER BY created_at DESC',
+        [req.params.id]
+      );
+    }
+    res.json({ deployments: rows.rows });
+  } catch (e) { next(e); }
+});
+
+// GET /api/projects/:id/secrets
+router.get('/projects/:id/secrets', async (req, res, next) => {
+  try {
+    const { environment_id } = req.query;
+    if (!environment_id) return res.status(400).json({ error: { code: 'validation_error', message: 'environment_id query param required' } });
+    const env = await query(
+      'SELECT id FROM environments WHERE id = $1 AND project_id = $2',
+      [environment_id, req.params.id]
+    );
+    if (!env.rows.length) return res.status(404).json({ error: { code: 'not_found', message: 'Environment not found' } });
+    const { getEnvironmentSecrets } = require('../services/environmentService');
+    res.json(await getEnvironmentSecrets(environment_id));
+  } catch (e) { next(e); }
+});
+
+// POST /api/projects/:id/secrets
+router.post('/projects/:id/secrets', async (req, res, next) => {
+  try {
+    const { environment_id, key, value } = req.body;
+    if (!environment_id || !key || value === undefined) {
+      return res.status(400).json({ error: { code: 'validation_error', message: 'environment_id, key, and value required' } });
+    }
+    const env = await query(
+      'SELECT id FROM environments WHERE id = $1 AND project_id = $2',
+      [environment_id, req.params.id]
+    );
+    if (!env.rows.length) return res.status(404).json({ error: { code: 'not_found', message: 'Environment not found' } });
+    const result = await query(
+      `INSERT INTO secrets (project_id, environment_id, key, value)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (environment_id, key) DO UPDATE SET value = $4, updated_at = NOW()
+       RETURNING *`,
+      [req.params.id, environment_id, key, value]
+    );
+    const { value: _value, ...secret } = result.rows[0];
+    res.status(201).json({ ...secret, value: '••••••••' });
+  } catch (e) { next(e); }
+});
+
+// DELETE /api/projects/:id/secrets/:key
+router.delete('/projects/:id/secrets/:key', async (req, res, next) => {
+  try {
+    const { environment_id } = req.query;
+    if (!environment_id) return res.status(400).json({ error: { code: 'validation_error', message: 'environment_id query param required' } });
+    const result = await query(
+      `DELETE FROM secrets s
+        USING environments e
+        WHERE s.environment_id = e.id
+          AND s.environment_id = $1
+          AND e.project_id = $2
+          AND s.key = $3
+      RETURNING s.id`,
+      [environment_id, req.params.id, req.params.key]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: { code: 'not_found', message: 'Secret not found' } });
+    res.json({ deleted: true });
+  } catch (e) { next(e); }
+});
+
+function listFilesRecursive(currentDir, baseDir) {
+  const files = [];
+  try {
+    const entries = fs.readdirSync(currentDir, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = path.join(currentDir, entry.name);
+      const relative = path.relative(baseDir, fullPath);
+      if (entry.isDirectory()) {
+        const children = listFilesRecursive(fullPath, baseDir);
+        if (children.length) {
+          files.push({ name: entry.name, path: relative, type: 'directory', children });
+        }
+      } else {
+        if (!ALLOWED_FILES.has(relative)) continue;
+        const stat = fs.statSync(fullPath);
+        files.push({ name: entry.name, path: relative, type: 'file', size: stat.size, modified: stat.mtime });
+      }
+    }
+  } catch (e) { /* ignore unreadable dirs */ }
+  return files.sort((a, b) => a.type === b.type ? a.name.localeCompare(b.name) : a.type === 'directory' ? -1 : 1);
+}
+
+module.exports = router;
