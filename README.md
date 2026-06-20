@@ -1,99 +1,233 @@
 # GoneOps MVP
 
-**DevOps DX Platform Control Dashboard** — Local-first full-stack demo.
+**DevOps DX Platform Control Dashboard** — Local-first full-stack demo. Create development environments, select runtime services, generate sandbox infrastructure, run CI/CD pipelines, preview apps, and test services from the UI.
 
-> Warning: Not production-safe. Secrets are stored in plaintext for local development only.
+> ⚠️ **Warning:** Not production-safe. Secrets are stored in plaintext for local development only.
 
-## Architecture
+---
 
-```
-Browser (:3000) → Nginx → React SPA
-                  /api → Express Backend (:4000) → PostgreSQL, Redis, RabbitMQ
-                            ↓ docker.sock
-                       Sandbox Docker Stacks (per environment)
-```
+## 🖥 System Requirements
 
-**Control plane** (fixed ports): Frontend :3000, Backend :4000, PostgreSQL :5432, Redis :6379, RabbitMQ :5672/:15672  
-**Sandbox plane** (port range ≥20000): Per-environment Docker Compose stacks generated on disk.  
-**Startup reconciliation**: Stale transitional states (>5 min environments, >10 min pipelines) are reconciled to `failed` on backend startup.  
-**Lifecycle transitions**: Compare-and-set state updates prevent concurrent conflicting operations (HTTP 409 on conflict).  
-**Pipeline scope**: Pipeline runs are scoped to environments with at most one active run per environment.
+| Requirement | Minimum |
+|-------------|---------|
+| Docker | 24.0+ |
+| Docker Compose | 2.20+ (built into Docker Desktop) |
+| OS | Linux, macOS, or Windows (WSL2) |
+| RAM | 4 GB available |
+| Disk | 2 GB free |
+| Git | 2.30+ |
 
-## Stack
+---
 
-- **Frontend:** React 18 + Vite + TailwindCSS + lucide-react
-- **Backend:** Node.js + Express
-- **Database:** PostgreSQL 15
-- **Cache:** Redis 7
-- **Message Queue:** RabbitMQ 3.12
-- **Container:** Docker Compose
+## 🚀 Quick Install
 
-## Quick Start
+### 1. Clone
 
 ```bash
-# Prerequisites: Docker and Docker Compose installed
-
-# 1. Clone the repository
-git clone <repo-url> && cd GoneOps
-
-# 2. Start the entire stack
-docker compose up -d
-
-# 3. Wait for all services (first time may take 1-2 minutes for image pulls)
-docker compose ps
-
-# 4. Open the dashboard
-open http://localhost:3000
+git clone https://github.com/Veerapoj/goneops.git
+cd goneops
 ```
+
+### 2. Start
+
+```bash
+docker compose up -d
+```
+
+First run pulls images (PostgreSQL, Redis, RabbitMQ) and builds frontend/backend — takes 2-5 minutes.
+
+### 3. Verify
+
+```bash
+docker compose ps
+```
+
+All 5 services should show `Up`:
+
+| Container | Port | Status |
+|-----------|------|--------|
+| goneops-frontend | :3000 | Up |
+| goneops-backend | :4000 | Up |
+| goneops-postgres | :5432 | healthy |
+| goneops-redis | :6379 | Up |
+| goneops-rabbitmq | :5672, :15672 | Up |
+
+### 4. Open
+
+[http://localhost:3000](http://localhost:3000)
 
 The `goneops-demo` project is pre-seeded with sample data.
 
-## End-to-End Demo Flow
+---
 
-1. **Overview** — See pre-seeded goneops-demo project with Dev environment
-2. **Create Project** — POST /api/projects with a new name
-3. **Create Environment** — POST /api/projects/:id/environments (e.g., "dev")
-4. **Generate Sandbox** — POST /api/projects/:id/generate-sandbox → writes real files to disk at /tmp/goneops-sandboxes/
-5. **Run Sandbox** — POST /api/projects/:id/run → docker compose up -d (202 Accepted, poll status)
-6. **Test API** — POST /api/projects/:id/test-api → proxies to sandbox /api/test, returns real JSON
-7. **View Logs** — GET /api/projects/:id/logs → docker compose logs --tail from sandbox
-8. **Run Pipeline** — POST /api/projects/:id/pipelines/run → 6-step CI/CD (202 Accepted, poll status)
-9. **Browse Files** — GET /api/projects/:id/files → real generated files on disk
-10. **View Secrets** — Secrets page shows masked environment variables with copy buttons
+## 🛠 Configuration
 
-## API Endpoints
+### Port conflicts
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | /api/health | Health check |
-| GET | /api/projects | List projects |
-| POST | /api/projects | Create project |
-| GET | /api/projects/:id | Project detail + envs + services |
-| POST | /api/projects/:id/environments | Create environment |
-| POST | /api/projects/:id/generate-sandbox | Generate sandbox files + ports |
-| POST | /api/projects/:id/run | Run sandbox (202) |
-| POST | /api/projects/:id/stop | Stop sandbox |
-| POST | /api/projects/:id/restart | Restart sandbox (202) |
-| POST | /api/projects/:id/test-api | Test sandbox API |
-| GET | /api/projects/:id/files | List sandbox files |
-| GET | /api/projects/:id/files/content | Read file content |
-| GET | /api/projects/:id/logs | Get sandbox container logs |
-| GET | /api/projects/:id/pipelines | List pipeline runs |
-| POST | /api/projects/:id/pipelines/run | Run pipeline (202) |
+If ports 3000-6379 are in use, override in `docker-compose.yml`:
 
-## Environment Variables
+```yaml
+services:
+  frontend:
+    ports:
+      - "3001:80"   # change host port
+  postgres:
+    ports:
+      - "5433:5432"
+```
 
-See `.env.example` for all configurable variables.
+Then access at `http://localhost:3001`.
 
-## Development
+### Environment variables
+
+Copy and edit:
 
 ```bash
-# Backend only
-cd backend && npm install && npm run dev
+cp .env.example .env
+```
 
-# Frontend only
-cd frontend && npm install && npm run dev
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PORT` | 4000 | Backend API port |
+| `PGHOST` | postgres | PostgreSQL hostname |
+| `PGPORT` | 5432 | PostgreSQL port |
+| `PGDATABASE` | goneops | Database name |
+| `PGUSER` | goneops | Database user |
+| `PGPASSWORD` | goneops | Database password |
+| `REDIS_HOST` | redis | Redis hostname |
+| `REDIS_PORT` | 6379 | Redis port |
+| `RABBITMQ_URL` | amqp://goneops:goneops@rabbitmq:5672 | RabbitMQ connection |
+| `SANDBOX_BASE_DIR` | /tmp/goneops-sandboxes | Sandbox output directory |
+| `SANDBOX_PORT_BASE` | 20000 | Starting port for sandbox stacks |
 
-# With Docker (full stack)
+---
+
+## 🧪 Running E2E Tests
+
+The project includes **25 Playwright tests** covering all pages, API endpoints, and sandbox flow.
+
+### Prerequisites
+
+```bash
+# Docker stack must be running
+docker compose up -d
+
+# Install Playwright browsers
+cd tests/e2e
+npx playwright install chromium
+```
+
+### Run tests
+
+```bash
+cd tests/e2e
+npx playwright test
+```
+
+### View report
+
+```bash
+npx playwright show-report
+```
+
+---
+
+## 💻 Development Without Docker
+
+### Backend
+
+```bash
+cd backend
+npm install
+npm run dev
+```
+
+Requires PostgreSQL, Redis, and RabbitMQ running locally.
+
+### Frontend
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Runs on `http://localhost:5173` with Vite dev server (proxies `/api` to `:4000`).
+
+### Full stack
+
+```bash
 docker compose up -d
 ```
+
+---
+
+## 🔄 Demo Flow
+
+1. **Overview** — See pre-seeded goneops-demo project with Dev environment
+2. **Create Project** — Enter a project name and create
+3. **Create Environment** — Select project, add "dev" environment
+4. **Generate Sandbox** — Click Generate → writes real files to disk
+5. **Run Sandbox** — Click Run → starts Docker containers
+6. **Test API** — Click Test API → returns live JSON from sandbox app
+7. **View Logs** — Open Logs page → see container logs
+8. **Run Pipeline** — Click Run Pipeline → 6-step CI/CD executes
+9. **Browse Files** — File Browser shows generated project files
+10. **Secrets** — Masks sensitive values, copy connection strings
+
+---
+
+## ❌ Troubleshooting
+
+| Problem | Solution |
+|---------|----------|
+| `docker: not found` | Install Docker: https://docs.docker.com/get-docker/ |
+| Port already in use | Change host ports in `docker-compose.yml` |
+| Backend can't connect to DB | Wait for PostgreSQL health check (10-20s) |
+| Sandbox fails to start | Ensure Docker socket is mounted (`/var/run/docker.sock`) |
+| `docker compose` not found | Use `docker-compose` (v1) or upgrade to Docker Compose v2 |
+| Permission denied on /var/run/docker.sock | Add user to `docker` group: `sudo usermod -aG docker $USER` |
+
+---
+
+## 🧱 Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Frontend | React 18 + Vite + TailwindCSS + lucide-react |
+| Backend | Node.js + Express |
+| Database | PostgreSQL 15 |
+| Cache | Redis 7 |
+| Message Queue | RabbitMQ 3.12 |
+| Container | Docker Compose |
+
+---
+
+## 📁 Project Structure
+
+```
+├── backend/          # Express API server
+│   ├── src/
+│   │   ├── lib/          # DB, Redis, MQ clients
+│   │   ├── routes/       # API route handlers
+│   │   ├── services/     # Business logic
+│   │   ├── sandbox/      # Generator, runner, ports, README
+│   │   └── operations/   # Startup reconciler
+│   └── test/             # Smoke tests
+├── frontend/         # React SPA
+│   └── src/
+│       ├── api/          # Axios client
+│       ├── context/      # ProjectContext (localStorage)
+│       ├── layout/       # Sidebar, Topbar, Layout
+│       └── pages/        # 12 pages
+├── database/         # init.sql (8 tables + seed data)
+├── sandbox-template/ # Generated app template
+├── tests/e2e/        # Playwright E2E tests
+└── docker-compose.yml
+```
+
+---
+
+## 📄 License
+
+MIT
