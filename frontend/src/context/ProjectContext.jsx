@@ -22,14 +22,17 @@ export function ProjectProvider({ children }) {
       const data = await fetchProjects();
       const list = Array.isArray(data) ? data : (data.projects || []);
       setProjects(list);
-      if (!selectedProjectId && list.length > 0) {
+      const exists = list.some((p) => p.id === selectedProjectId);
+      if (!exists || (!selectedProjectId && list.length > 0)) {
         const first = list[0];
-        setSelectedProjectId(first.id);
-        localStorage.setItem('selectedProjectId', first.id);
-        const envs = first.environments || [];
-        if (envs.length > 0) {
-          setSelectedEnvironmentId(envs[0].id);
-          localStorage.setItem('selectedEnvironmentId', envs[0].id);
+        if (first) {
+          setSelectedProjectId(first.id);
+          localStorage.setItem('selectedProjectId', first.id);
+          const envs = first.environments || [];
+          if (envs.length > 0) {
+            setSelectedEnvironmentId(envs[0].id);
+            localStorage.setItem('selectedEnvironmentId', envs[0].id);
+          }
         }
       }
     } catch (err) {
@@ -42,19 +45,6 @@ export function ProjectProvider({ children }) {
   useEffect(() => {
     loadProjects();
   }, []);
-
-  useEffect(() => {
-    if (loading || projects.length === 0) return;
-    if (selectedProject) return;
-    const first = projects[0];
-    setSelectedProjectId(first.id);
-    localStorage.setItem('selectedProjectId', first.id);
-    const env = (first.environments || [])[0];
-    if (env) {
-      setSelectedEnvironmentId(env.id);
-      localStorage.setItem('selectedEnvironmentId', env.id);
-    }
-  }, [loading, projects, selectedProject]);
 
   const selectProject = useCallback((projectId, environmentId) => {
     setSelectedProjectId(projectId);
@@ -87,19 +77,6 @@ export function ProjectProvider({ children }) {
   const selectedProject = projects.find((p) => p.id === selectedProjectId) || null;
   const selectedEnvironment =
     selectedProject?.environments?.find((e) => e.id === selectedEnvironmentId) || null;
-
-  useEffect(() => {
-    if (!selectedProject) return;
-    if (selectedEnvironment) return;
-    const envs = selectedProject.environments || [];
-    if (envs.length > 0) {
-      setSelectedEnvironmentId(envs[0].id);
-      localStorage.setItem('selectedEnvironmentId', envs[0].id);
-    } else {
-      setSelectedEnvironmentId(null);
-      localStorage.removeItem('selectedEnvironmentId');
-    }
-  }, [selectedProject, selectedEnvironment]);
 
   return (
     <ProjectContext.Provider
