@@ -10,5 +10,5 @@ test('pipeline page displays run history and all six required stages', async ({ 
     await expect(page.locator('body')).toContainText(stage);
   }
 
-  await expect(page.getByRole('button', { name: /Run Pipeline|Triggering|Refresh/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Run Pipeline/ })).toBeVisible();
 });
