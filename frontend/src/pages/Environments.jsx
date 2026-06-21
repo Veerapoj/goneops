@@ -57,7 +57,7 @@ function EnvCard({ env, selected, onSelect, projectId, onAction }) {
           </div>
           <div>
             <p className="font-semibold text-slate-800">{env.name}</p>
-            <p className="text-xs text-slate-400 font-mono mt-0.5 truncate max-w-[140px]">{env.id?.slice(0, 16)}…</p>
+            <p className="text-xs text-slate-400 font-mono mt-0.5 truncate max-w-[140px]">{String(env.id ?? '').slice(0, 16)}…</p>
           </div>
         </div>
         <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full shrink-0 ${statusBadge(env.status)}`}>

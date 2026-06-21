@@ -76,7 +76,7 @@ function PipelineRow({ pipeline, index }) {
           <div className="flex items-center gap-2">
             {statusIcon()}
             <span className="font-medium text-slate-700 text-sm">Run #{index + 1}</span>
-            <span className="text-xs text-slate-400 font-mono">{pipeline.id?.slice(0, 8)}</span>
+            <span className="text-xs text-slate-400 font-mono">{String(pipeline.id ?? '').slice(0, 8)}</span>
           </div>
         </td>
         <td className="px-5 py-3.5">
@@ -218,7 +218,7 @@ export default function Pipelines() {
               <GitBranch size={14} className="text-blue-500" /> Latest Run
             </h2>
             <div className="flex items-center gap-2 text-xs text-slate-400">
-              <span className="font-mono">{latest.id?.slice(0, 8)}</span>
+              <span className="font-mono">{String(latest.id ?? '').slice(0, 8)}</span>
               <span>·</span>
               <span>{latest.created_at ? new Date(latest.created_at).toLocaleString() : '—'}</span>
             </div>
