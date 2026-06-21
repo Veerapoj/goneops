@@ -1,3 +1,4 @@
+import { useState, useRef, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -13,10 +14,14 @@ import {
   Terminal,
   ScrollText,
   ChevronDown,
+  ChevronUp,
   Circle,
   Zap,
+  Check,
+  Plus,
 } from 'lucide-react';
 import { useProject } from '../context/ProjectContext';
+import { createProject } from '../api/client';
 
 const navGroups = [
   {
@@ -78,14 +83,41 @@ function NavItem({ to, label, icon: Icon, exact }) {
 }
 
 export default function Sidebar() {
-  const { selectedProject, selectedEnvironment, projects, selectProject, selectEnvironment } = useProject();
+  const { projects, selectedProject, selectedEnvironment, selectProject, refresh } = useProject();
+  const [open, setOpen] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [creating, setCreating] = useState(false);
+  const dropdownRef = useRef(null);
+
+  useEffect(() => {
+    const handleClick = (e) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+
+  const handleCreate = async (e) => {
+    e.preventDefault();
+    if (!newName.trim()) return;
+    setCreating(true);
+    try {
+      await createProject(newName.trim());
+      setNewName('');
+      setOpen(false);
+      await refresh();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setCreating(false);
+    }
+  };
 
   return (
     <aside
       className="flex flex-col shrink-0 h-screen sticky top-0 overflow-y-auto"
       style={{ width: 268, background: '#071427' }}
     >
-      {/* Logo */}
       <div className="flex items-center gap-2.5 px-5 py-5 border-b border-white/5">
         <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center shadow-lg">
           <Zap size={16} className="text-white" />
@@ -96,23 +128,62 @@ export default function Sidebar() {
         </div>
       </div>
 
-      {/* Project selector */}
-      {selectedProject && (
-        <div className="px-4 py-3 border-b border-white/5">
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-600 mb-1.5">
-            Project
-          </p>
-          <button className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-white/5 hover:bg-white/10 transition-colors text-left">
-            <div className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
-            <span className="text-slate-200 text-sm font-medium truncate flex-1">
-              {selectedProject.name}
-            </span>
+      <div className="px-4 py-3 border-b border-white/5 relative" ref={dropdownRef}>
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-600 mb-1.5">
+          Project
+        </p>
+        <button
+          onClick={() => setOpen(!open)}
+          className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-white/5 hover:bg-white/10 transition-colors text-left"
+        >
+          <div className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
+          <span className="text-slate-200 text-sm font-medium truncate flex-1">
+            {selectedProject?.name || 'Select project'}
+          </span>
+          {open ? (
+            <ChevronUp size={12} className="text-slate-500 shrink-0" />
+          ) : (
             <ChevronDown size={12} className="text-slate-500 shrink-0" />
-          </button>
-        </div>
-      )}
+          )}
+        </button>
 
-      {/* Navigation */}
+        {open && (
+          <div className="absolute left-4 right-4 top-[68px] z-50 bg-slate-800 border border-slate-700 rounded-xl shadow-2xl overflow-hidden">
+            <div className="max-h-48 overflow-y-auto">
+              {projects.map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => { selectProject(p.id); setOpen(false); }}
+                  className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-left hover:bg-white/5 transition-colors ${
+                    selectedProject?.id === p.id ? 'bg-blue-600/20 text-blue-300' : 'text-slate-300'
+                  }`}
+                >
+                  <Circle size={7} className="fill-emerald-400 text-emerald-400 shrink-0" />
+                  <span className="truncate flex-1">{p.name}</span>
+                  {selectedProject?.id === p.id && <Check size={12} className="text-blue-400 shrink-0" />}
+                </button>
+              ))}
+            </div>
+            <form onSubmit={handleCreate} className="border-t border-slate-700 flex items-center gap-1 p-2">
+              <input
+                type="text"
+                placeholder="New project..."
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                className="flex-1 bg-slate-700 text-slate-200 text-xs rounded-lg px-2.5 py-2 outline-none focus:ring-1 focus:ring-blue-500 placeholder-slate-500"
+              />
+              <button
+                type="submit"
+                disabled={creating || !newName.trim()}
+                className="p-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white"
+              >
+                <Plus size={14} />
+              </button>
+            </form>
+          </div>
+        )}
+      </div>
+
       <nav className="flex-1 px-3 py-4 space-y-6 overflow-y-auto">
         {navGroups.map((group) => (
           <div key={group.label}>
@@ -130,7 +201,6 @@ export default function Sidebar() {
         ))}
       </nav>
 
-      {/* Bottom: Environment status + user */}
       <div className="border-t border-white/5 px-4 py-4 space-y-3">
         {selectedEnvironment ? (
           <div className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-white/5">
