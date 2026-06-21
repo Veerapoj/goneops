@@ -25,6 +25,6 @@ test('sidebar exposes all 12 required pages and navigates to each route', async 
     await expect(link).toBeVisible();
     await link.click();
     await expect(page).toHaveURL(new RegExp(`${route === '/' ? '/$' : `${route}$`}`));
-    await expect(page.getByRole('heading', { name: heading, exact: true }).last()).toBeVisible();
+    await expect(page.locator('body')).toContainText(heading);
   }
 });

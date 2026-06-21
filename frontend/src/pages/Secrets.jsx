@@ -140,8 +140,9 @@ export default function Secrets() {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-slate-500 mb-1.5">Key</label>
+              <label htmlFor="secret-key" className="block text-xs font-medium text-slate-500 mb-1.5">Key</label>
               <input
+                id="secret-key"
                 autoFocus
                 type="text"
                 placeholder="DATABASE_URL"
@@ -151,8 +152,9 @@ export default function Secrets() {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-500 mb-1.5">Value</label>
+              <label htmlFor="secret-value" className="block text-xs font-medium text-slate-500 mb-1.5">Value</label>
               <input
+                id="secret-value"
                 type="text"
                 placeholder="secret value"
                 value={formValue}

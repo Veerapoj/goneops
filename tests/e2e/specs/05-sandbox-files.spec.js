@@ -15,7 +15,8 @@ test('Generate Sandbox creates the required real files and service metadata', as
   expect(body.config.projectName).toBe(projectName);
   expect(body.config.envName).toBe('dev');
   expect(body.config.dbName).toBe(`${projectName.replace(/-/g, '_')}_dev_db`);
-  expect(body.files).toEqual(expect.arrayContaining([
+  const fileNames = body.files.map((f) => f.name || f);
+  expect(fileNames).toEqual(expect.arrayContaining([
     'README.md', 'package.json', 'Dockerfile', 'docker-compose.yml',
     '.env', '.env.example', 'src/index.js',
   ]));
