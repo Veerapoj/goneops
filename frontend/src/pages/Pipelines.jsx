@@ -127,7 +127,7 @@ export default function Pipelines() {
     if (!silent) setLoading(true);
     setError(null);
     try {
-      const data = await fetchPipelines(selectedProjectId);
+      const data = await fetchPipelines(selectedProjectId, selectedEnvironmentId);
       const list = Array.isArray(data) ? data : (data.pipelines || []);
       setPipelines(list);
       return list;
@@ -136,7 +136,7 @@ export default function Pipelines() {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [selectedProjectId]);
+  }, [selectedProjectId, selectedEnvironmentId]);
 
   const startPoll = useCallback(() => {
     if (pollRef.current) clearInterval(pollRef.current);

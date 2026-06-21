@@ -1,8 +1,8 @@
 # GoneOps MVP — Architecture Decision Record
 
 Stage: `architecture` · Target: local-first DevOps DX dashboard.
-Decision revision: 2026-06-20.2 (reconciled against the product brief, UI preview, runtime
-topology, and repository).
+Decision revision: 2026-06-21.1 (adds the remaining MVP networking, selection-repair, and
+environment-scoped pipeline-read decisions).
 Decision status: accepted target architecture; current implementation is non-conformant until all
 verification gates in section 13 pass.
 Machine-readable decision: [`architecture-decision.json`](./architecture-decision.json).
@@ -36,9 +36,18 @@ backend enables CORS only for direct local tooling. Control-plane ports are fixe
 5432, 6379, 5672, and 15672. Sandbox host ports are allocated from 20000 upward.
 
 The root Compose project creates the named bridge network `goneops_net`. Generated sandbox
-projects declare `goneops_net` as external and join it. Sandbox services communicate by Compose
-service name; the backend reaches sandbox HTTP by the generated web container's deterministic
-network alias and uses the allocated published port only for browser-facing URLs.
+projects declare `goneops_net` as external and join it. Because every sandbox shares this network,
+plain Compose service names such as `db`, `redis`, and `mq` are not stable identities: Docker DNS
+may resolve a container from another sandbox. Every generated service therefore publishes the
+resource-prefix aliases `<prefix>_web`, `<prefix>_db`, `<prefix>_redis`, and `<prefix>_mq`.
+Generated web configuration addresses dependencies through those aliases. The backend reaches
+sandbox HTTP by `<prefix>_web` and uses the allocated published port only for browser-facing URLs.
+Compose service names remain valid for same-project declarations such as `depends_on`, but they are
+not used as runtime connection endpoints on the shared network.
+
+The checked-in `sandbox-template/docker-compose.yml` is the normal generation source. The inline
+fallback in `backend/src/sandbox/generator.js` must remain behaviorally equivalent for aliases and
+dependency host values until that fallback is removed.
 
 ### 1.1 Docker client/daemon filesystem contract
 
@@ -374,8 +383,19 @@ service selection cards, runtime service table, six-step pipeline, live preview,
 info, and quick actions. `lucide-react` supplies icons.
 
 Project and environment selection are shared state persisted to local storage. Server data is
-authoritative and refreshed after mutations. Every page includes loading, empty, error, and
-Docker-unavailable states. Mutation controls prevent duplicate submission.
+authoritative and refreshed after mutations. Once the selected project's environments are known,
+`ProjectContext` validates the persisted `selectedEnvironmentId` against that exact project. A
+missing or foreign environment ID is repaired to the project's first environment, or cleared when
+the project has none, with React state and local storage updated together. Repair is deferred while
+the project payload is unavailable so initial loading does not erase a potentially valid choice.
+Every page includes loading, empty, error, and Docker-unavailable states. Mutation controls prevent
+duplicate submission.
+
+Pipeline history is an environment-scoped view. `fetchPipelines(projectId, environmentId)` sends
+`environment_id` as a query parameter, and the Pipelines page neither loads nor polls until both
+selection IDs exist. Selection changes replace the displayed history with data for the new
+environment; project-wide fallback behavior remains a backend compatibility detail, not a frontend
+default.
 
 No runtime service, deployment, pipeline, file, log, secret, or preview data may come from static
 frontend mocks.
@@ -496,6 +516,15 @@ Implementation is complete only when:
     are reconciled without duplicate side effects.
 15. Generated Compose validation proves no backend-container-local path is emitted as a host bind
     source.
+16. Generated Compose validation covers both the checked-in template and inline fallback and proves
+    that web, db, redis, and mq expose unique resource-prefix aliases and web uses the unique
+    dependency aliases.
+17. Frontend tests prove a stale persisted environment from another project repairs after project
+    load/refresh, while a project with no environments clears the selection without an initial-load
+    race.
+18. Pipeline UI tests prove initial loads, refreshes, post-run reloads, and polling all include the
+    selected `environment_id`; the frontend production build and all seven Playwright E2E specs
+    pass.
 
 ## 14. Decision Outcome
 

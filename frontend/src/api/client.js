@@ -70,8 +70,8 @@ export async function fetchLogs(projectId, environmentId, tail = 100) {
   return data;
 }
 
-export async function fetchPipelines(projectId) {
-  const { data } = await client.get(`/projects/${projectId}/pipelines`);
+export async function fetchPipelines(projectId, environmentId) {
+  const { data } = await client.get(`/projects/${projectId}/pipelines`, { params: { environment_id: environmentId } });
   return data;
 }
 

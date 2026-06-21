@@ -9,10 +9,10 @@ export function ProjectProvider({ children }) {
   const [error, setError] = useState(null);
 
   const [selectedProjectId, setSelectedProjectId] = useState(
-    () => localStorage.getItem('selectedProjectId') || null
+    () => { const v = localStorage.getItem('selectedProjectId'); return v ? Number(v) : null; }
   );
   const [selectedEnvironmentId, setSelectedEnvironmentId] = useState(
-    () => localStorage.getItem('selectedEnvironmentId') || null
+    () => { const v = localStorage.getItem('selectedEnvironmentId'); return v ? Number(v) : null; }
   );
 
   const loadProjects = useCallback(async () => {
@@ -74,6 +74,19 @@ export function ProjectProvider({ children }) {
   const selectedProject = projects.find((p) => p.id === selectedProjectId) || null;
   const selectedEnvironment =
     selectedProject?.environments?.find((e) => e.id === selectedEnvironmentId) || null;
+
+  useEffect(() => {
+    if (!selectedProject) return;
+    if (selectedEnvironment) return;
+    const envs = selectedProject.environments || [];
+    if (envs.length > 0) {
+      setSelectedEnvironmentId(envs[0].id);
+      localStorage.setItem('selectedEnvironmentId', envs[0].id);
+    } else {
+      setSelectedEnvironmentId(null);
+      localStorage.removeItem('selectedEnvironmentId');
+    }
+  }, [selectedProject, selectedEnvironment]);
 
   return (
     <ProjectContext.Provider

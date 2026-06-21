@@ -8,16 +8,18 @@ services:
       - "{{WEB_PORT}}:8080"
     environment:
       - PORT=8080
-      - PGHOST=db
+      - PGHOST={{PREFIX}}_db
       - PGPORT=5432
       - PGDATABASE={{DB_NAME}}
       - PGUSER={{DB_USER}}
       - PGPASSWORD={{DB_PASS}}
-      - REDIS_HOST=redis
+      - REDIS_HOST={{PREFIX}}_redis
       - REDIS_PORT=6379
-      - RABBITMQ_URL=amqp://{{MQ_USER}}:{{MQ_PASS}}@mq:5672
+      - RABBITMQ_URL=amqp://{{MQ_USER}}:{{MQ_PASS}}@{{PREFIX}}_mq:5672
     networks:
-      - goneops_net
+      goneops_net:
+        aliases:
+          - {{PREFIX}}_web
     depends_on:
       db:
         condition: service_healthy
@@ -46,7 +48,9 @@ services:
       timeout: 3s
       retries: 30
     networks:
-      - goneops_net
+      goneops_net:
+        aliases:
+          - {{PREFIX}}_db
 
   redis:
     image: redis:7-alpine
@@ -59,7 +63,9 @@ services:
       timeout: 3s
       retries: 30
     networks:
-      - goneops_net
+      goneops_net:
+        aliases:
+          - {{PREFIX}}_redis
 
   mq:
     image: rabbitmq:3.12-alpine
@@ -75,7 +81,9 @@ services:
       timeout: 5s
       retries: 30
     networks:
-      - goneops_net
+      goneops_net:
+        aliases:
+          - {{PREFIX}}_mq
 
 networks:
   goneops_net:
