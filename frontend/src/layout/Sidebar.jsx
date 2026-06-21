@@ -19,6 +19,7 @@ import {
   Zap,
   Check,
   Plus,
+  Layers,
 } from 'lucide-react';
 import { useProject } from '../context/ProjectContext';
 import { createProject } from '../api/client';
@@ -83,15 +84,18 @@ function NavItem({ to, label, icon: Icon, exact }) {
 }
 
 export default function Sidebar() {
-  const { projects, selectedProject, selectedEnvironment, selectProject, refresh } = useProject();
+  const { projects, selectedProject, selectedEnvironment, selectProject, selectEnvironment, refresh } = useProject();
   const [open, setOpen] = useState(false);
+  const [envOpen, setEnvOpen] = useState(false);
   const [newName, setNewName] = useState('');
   const [creating, setCreating] = useState(false);
   const dropdownRef = useRef(null);
+  const envRef = useRef(null);
 
   useEffect(() => {
     const handleClick = (e) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target)) setOpen(false);
+      if (envRef.current && !envRef.current.contains(e.target)) setEnvOpen(false);
     };
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
@@ -201,26 +205,43 @@ export default function Sidebar() {
         ))}
       </nav>
 
-      <div className="border-t border-white/5 px-4 py-4 space-y-3">
-        {selectedEnvironment ? (
-          <div className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-white/5">
-            <Circle
-              size={8}
-              className="text-emerald-400 fill-emerald-400 shrink-0"
-            />
-            <div className="min-w-0">
-              <p className="text-slate-300 text-xs font-medium truncate">{selectedEnvironment.name}</p>
-              <p className="text-slate-600 text-[10px] truncate">
-                {selectedEnvironment.status || 'active'}
-              </p>
+      <div className="border-t border-white/5 px-4 py-4 space-y-3" ref={envRef}>
+        <div className="relative">
+          <button onClick={() => setEnvOpen(!envOpen)}
+            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors">
+            {selectedEnvironment ? (
+              <>
+                <Circle size={8} className="text-emerald-400 fill-emerald-400 shrink-0" />
+                <div className="min-w-0 flex-1 text-left">
+                  <p className="text-slate-300 text-xs font-medium truncate">{selectedEnvironment.name}</p>
+                  <p className="text-slate-600 text-[10px] truncate">{selectedEnvironment.status || 'active'}</p>
+                </div>
+              </>
+            ) : (
+              <>
+                <Circle size={8} className="text-slate-600 fill-slate-600 shrink-0" />
+                <p className="text-slate-600 text-xs flex-1 text-left">No environment</p>
+              </>
+            )}
+            <ChevronDown size={10} className="text-slate-500 shrink-0" />
+          </button>
+          {envOpen && selectedProject?.environments?.length > 0 && (
+            <div className="absolute bottom-full mb-1 left-0 right-0 z-50 bg-slate-800 border border-slate-700 rounded-xl shadow-2xl overflow-hidden max-h-36 overflow-y-auto">
+              {selectedProject.environments.map((env) => (
+                <button key={env.id}
+                  onClick={() => { selectEnvironment(env.id); setEnvOpen(false); }}
+                  className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left hover:bg-white/5 transition-colors ${
+                    selectedEnvironment?.id === env.id ? 'bg-blue-600/20 text-blue-300' : 'text-slate-300'
+                  }`}>
+                  <Circle size={7} className="fill-emerald-400 text-emerald-400 shrink-0" />
+                  <span className="truncate flex-1">{env.name}</span>
+                  <span className="text-[10px] text-slate-500">{env.status || 'stopped'}</span>
+                  {selectedEnvironment?.id === env.id && <Check size={11} className="text-blue-400 shrink-0" />}
+                </button>
+              ))}
             </div>
-          </div>
-        ) : (
-          <div className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-white/5">
-            <Circle size={8} className="text-slate-600 fill-slate-600 shrink-0" />
-            <p className="text-slate-600 text-xs">No environment selected</p>
-          </div>
-        )}
+          )}
+        </div>
 
         <div className="flex items-center gap-2.5 px-1">
           <div className="w-7 h-7 rounded-full bg-gradient-to-br from-violet-500 to-purple-700 flex items-center justify-center text-white text-xs font-bold shrink-0">

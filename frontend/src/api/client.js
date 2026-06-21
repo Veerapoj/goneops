@@ -117,6 +117,13 @@ export async function fetchServices(projectId, environmentId) {
   return data;
 }
 
+export async function createService(projectId, environmentId, name, type, port) {
+  const { data } = await client.post(`/projects/${projectId}/services`, {
+    environment_id: environmentId, name, type, port,
+  });
+  return data;
+}
+
 export async function fetchDatabases(projectId, environmentId) {
   const { data } = await client.get(`/projects/${projectId}/databases`, {
     params: { environment_id: environmentId },

@@ -187,6 +187,29 @@ router.post('/projects/:id/pipelines/run', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// POST /api/projects/:id/services
+router.post('/projects/:id/services', async (req, res, next) => {
+  try {
+    const { environment_id, name, type, port, config } = req.body;
+    if (!environment_id || !name || !type) return res.status(400).json({ error: { code: 'validation_error', message: 'environment_id, name, and type required' } });
+    const env = await query(
+      'SELECT id FROM environments WHERE id = $1 AND project_id = $2',
+      [environment_id, req.params.id]
+    );
+    if (!env.rows.length) return res.status(404).json({ error: { code: 'not_found', message: 'Environment not found' } });
+    const result = await query(
+      `INSERT INTO services (environment_id, name, type, status, port, config)
+       VALUES ($1, $2, $3, 'healthy', $4, $5)
+       RETURNING *`,
+      [environment_id, name, type, port || 0, JSON.stringify(config || {})]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (e) {
+    if (e.code === '23505') return res.status(409).json({ error: { code: 'duplicate', message: `Service "${req.body.name}" already exists in this environment` } });
+    next(e);
+  }
+});
+
 // GET /api/projects/:id/services
 router.get('/projects/:id/services', async (req, res, next) => {
   try {
