@@ -43,6 +43,19 @@ export function ProjectProvider({ children }) {
     loadProjects();
   }, []);
 
+  useEffect(() => {
+    if (loading || projects.length === 0) return;
+    if (selectedProject) return;
+    const first = projects[0];
+    setSelectedProjectId(first.id);
+    localStorage.setItem('selectedProjectId', first.id);
+    const env = (first.environments || [])[0];
+    if (env) {
+      setSelectedEnvironmentId(env.id);
+      localStorage.setItem('selectedEnvironmentId', env.id);
+    }
+  }, [loading, projects, selectedProject]);
+
   const selectProject = useCallback((projectId, environmentId) => {
     setSelectedProjectId(projectId);
     localStorage.setItem('selectedProjectId', projectId);
