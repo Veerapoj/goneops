@@ -108,7 +108,7 @@ async function stopSandbox(projectId, environmentId) {
     throw Object.assign(new Error('Docker daemon is unavailable'), { status: 503, code: 'docker_unavailable', details: { docker_error: check.error } });
   }
 
-  await claimTransitionalState(environmentId, projectId, 'stopping', ['running', 'failed']);
+  await claimTransitionalState(environmentId, projectId, 'stopping', ['running', 'failed', 'starting']);
   setImmediate(async () => {
     const result = await execCommand('docker', ['compose', 'down'], workingDir);
     if (result.error) {
