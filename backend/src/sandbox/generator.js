@@ -208,7 +208,8 @@ const swaggerSpec = swaggerJsdoc({
  *       200:
  *         description: HTML Swagger UI page
  */
-app.use('/', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+app.use(swaggerUi.serve);
+app.get('/', swaggerUi.setup(swaggerSpec));
 
 /**
  * @openapi
