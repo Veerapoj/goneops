@@ -11,12 +11,12 @@ import {
 } from 'lucide-react';
 
 const SERVICE_TYPES = [
-  { key: 'web', label: 'Web Service', icon: Globe2, desc: 'HTTP/HTTPS server' },
-  { key: 'database', label: 'Database', icon: DatabaseIcon, desc: 'PostgreSQL / MySQL' },
-  { key: 'redis', label: 'Redis', icon: Zap, desc: 'In-memory cache' },
-  { key: 'queue', label: 'Message Queue', icon: MessageSquare, desc: 'RabbitMQ / Kafka' },
-  { key: 'storage', label: 'Storage', icon: HardDrive, desc: 'S3-compatible' },
-  { key: 'other', label: 'Other', icon: Layers3, desc: 'Custom service' },
+  { key: ['runtime'], label: 'Web Service', icon: Globe2, desc: 'HTTP/HTTPS server' },
+  { key: ['database', 'postgres', 'mysql'], label: 'Database', icon: DatabaseIcon, desc: 'PostgreSQL / MySQL' },
+  { key: ['cache', 'redis'], label: 'Redis', icon: Zap, desc: 'In-memory cache' },
+  { key: ['queue', 'mq', 'rabbitmq', 'kafka'], label: 'Message Queue', icon: MessageSquare, desc: 'RabbitMQ / Kafka' },
+  { key: ['storage', 's3', 'minio'], label: 'Storage', icon: HardDrive, desc: 'S3 Compatible' },
+  { key: ['other'], label: 'Other', icon: Box, desc: 'More Services' },
 ];
 
 const PIPELINE_STEPS = ['Checkout', 'Install', 'Lint & Test', 'Build', 'Deploy', 'Smoke Test'];
@@ -231,7 +231,7 @@ export default function Overview() {
             <div className="grid grid-cols-3 gap-3">
               {SERVICE_TYPES.map((st) => {
                 const Icon = st.icon;
-                const active = services.some(s => (s.type || '').toLowerCase().includes(st.key));
+                const active = services.some(s => (st.key || []).some(k => (s.type || '').toLowerCase() === k.toLowerCase()));
                 return (
                   <div key={st.key}
                     className={`relative flex flex-col gap-1 p-3 rounded-xl border cursor-pointer transition-all
