@@ -181,7 +181,11 @@ function writeSrcIndex(dir, config) {
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-app.get('/health', (req, res) => {
+    app.get('/', (req, res) => {
+      res.json({ status: 'ok', service: '${config.prefix}-app', message: 'GoneOps Sandbox App', timestamp: new Date().toISOString() });
+    });
+
+    app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString(), service: '${config.prefix}-app' });
 });
 

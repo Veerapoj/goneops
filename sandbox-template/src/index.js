@@ -2,6 +2,10 @@ const express = require('express');
 const app = express();
 const PORT = process.env.PORT || 8080;
 
+app.get('/', (req, res) => {
+  res.json({ status: 'ok', service: '{{PREFIX}}-app', message: 'GoneOps Sandbox App', timestamp: new Date().toISOString() });
+});
+
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString(), service: '{{PREFIX}}-app' });
 });
