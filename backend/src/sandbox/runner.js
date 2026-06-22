@@ -69,7 +69,7 @@ async function runSandbox(projectId, environmentId) {
 
   setImmediate(async () => {
     try {
-      const result = await execCommand('docker', ['compose', 'up', '-d', '--wait'], workingDir);
+      const result = await execCommand('docker', ['compose', 'up', '-d', '--wait', '--build'], workingDir);
       if (result.error) {
         await updateEnvironmentStatus(environmentId, 'failed', null);
         console.error(`[runner] up failed: ${result.stderr}`);
@@ -147,7 +147,7 @@ async function restartSandbox(projectId, environmentId) {
   setImmediate(async () => {
     try {
       await execCommand('docker', ['compose', 'down'], workingDir);
-      const result = await execCommand('docker', ['compose', 'up', '-d', '--wait'], workingDir);
+      const result = await execCommand('docker', ['compose', 'up', '-d', '--wait', '--build'], workingDir);
       if (result.error) {
         await updateEnvironmentStatus(environmentId, 'failed', null);
       } else {
