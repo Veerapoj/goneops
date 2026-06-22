@@ -1,15 +1,86 @@
 const express = require('express');
+const swaggerJsdoc = require('swagger-jsdoc');
+const swaggerUi = require('swagger-ui-express');
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-app.get('/', (req, res) => {
-  res.json({ status: 'ok', service: '{{PREFIX}}-app', message: 'GoneOps Sandbox App', timestamp: new Date().toISOString() });
+const swaggerSpec = swaggerJsdoc({
+  definition: {
+    openapi: '3.0.0',
+    info: {
+      title: '{{PREFIX}}-app',
+      version: '1.0.0',
+      description: 'GoneOps Sandbox API',
+    },
+    servers: [{ url: '/' }],
+  },
+  apis: [__filename],
 });
 
+/**
+ * @openapi
+ * /:
+ *   get:
+ *     summary: Swagger UI documentation
+ *     description: Serves the interactive API documentation page.
+ *     responses:
+ *       200:
+ *         description: HTML Swagger UI page
+ */
+app.use('/', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+
+/**
+ * @openapi
+ * /health:
+ *   get:
+ *     summary: Health check
+ *     description: Returns service health status. Used by docker-compose healthcheck.
+ *     responses:
+ *       200:
+ *         description: Service is healthy
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: ok
+ *                 timestamp:
+ *                   type: string
+ *                 service:
+ *                   type: string
+ */
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString(), service: '{{PREFIX}}-app' });
 });
 
+/**
+ * @openapi
+ * /api/test:
+ *   get:
+ *     summary: Database connection test
+ *     description: Tests connectivity to PostgreSQL, Redis, and RabbitMQ.
+ *     responses:
+ *       200:
+ *         description: Connection test results
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 results:
+ *                   type: object
+ *                   properties:
+ *                     pg:
+ *                       type: string
+ *                     redis:
+ *                       type: string
+ *                     mq:
+ *                       type: string
+ *                 timestamp:
+ *                   type: string
+ */
 app.get('/api/test', async (req, res) => {
   const results = { pg: 'not_tested', redis: 'not_tested', mq: 'not_tested' };
 

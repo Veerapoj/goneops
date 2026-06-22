@@ -11,6 +11,8 @@
     "express": "^4.21.0",
     "pg": "^8.13.0",
     "ioredis": "^5.4.0",
-    "amqplib": "^0.10.4"
+    "amqplib": "^0.10.4",
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.1"
   }
 }
