@@ -1,37 +1,20 @@
 {
-  "summary": "Local-first two-plane architecture for the GoneOps MVP: a React dashboard and layered Express control plane manage one generated Docker Compose sandbox per environment, with PostgreSQL as the ownership, metadata, lifecycle, and recovery authority. The remaining MVP fixes preserve those boundaries by making shared-network DNS names sandbox-unique and keeping frontend environment state and pipeline reads environment-scoped.",
+  "summary": "Externalize the sandbox preview host into a single PUBLIC_HOST configuration boundary so that user-facing Live App URLs reflect the publicly reachable address (192.168.1.147) rather than the container-local 'localhost'. The host is read once at module scope in both the generator (initial preview_url written during sandbox generation) and the runner (previewUrl written on run and restart) and is injected through the docker-compose backend environment. Internal service connection strings and container healthchecks remain on localhost because they are consumed inside the container/local-developer context and are not user-navigable.",
   "components": [
-    "Root Docker Compose control plane with nginx, React/Vite/TailwindCSS frontend, Express backend, PostgreSQL, Redis, and RabbitMQ on goneops_net",
-    "React Router dashboard shell and twelve API-backed pages with shared project and environment selection",
-    "Layered Express HTTP controllers, application services, PostgreSQL repositories, and injectable filesystem, Docker, HTTP proxy, log, and terminal adapters",
-    "PostgreSQL schema for projects, environments, services, deployments, environment-scoped pipeline runs and steps, secrets, and transactional sandbox port reservations",
-    "Atomic template-based sandbox generator producing Express source, Dockerfile, docker-compose.yml, environment files, and README.md in an owned working directory",
-    "Sandbox Compose networking with resource-prefix aliases for web, db, redis, and mq on the shared external goneops_net",
-    "Docker Compose lifecycle, logs, bounded sandbox HTTP proxy, and container-only WebSocket terminal transport with an explicit backend-client/host-daemon filesystem boundary",
-    "Six-step persisted simulated CI/CD pipeline with pollable asynchronous execution and deployment metadata",
-    "Startup operation reconciler and idempotent lifecycle/pipeline executors for persisted transitional states",
-    "nginx same-origin API and WebSocket proxy with SPA fallback",
-    "ProjectContext selection reconciler that validates persisted project and environment IDs against the latest project payload",
-    "Environment-scoped pipeline client contract that forwards environment_id on history reads as well as pipeline runs"
+    "generator.js PUBLIC_HOST module constant (process.env.PUBLIC_HOST || 'localhost') feeding the preview_url written by generateSandbox at the environments UPDATE",
+    "runner.js PUBLIC_HOST module constant feeding previewUrl in both runSandbox and restartSandbox paths via updateEnvironmentStatus",
+    "docker-compose.yml backend service environment entry PUBLIC_HOST=192.168.1.147 supplying the runtime value to the backend container",
+    "environmentService.updateEnvironmentStatus as the persistence sink that stores the host-qualified previewUrl onto the environment record",
+    "Port allocation (ports.js) host_port values that are concatenated with PUBLIC_HOST to form http://PUBLIC_HOST:PORT preview URLs",
+    "E2E Playwright suite (9 tests) plus public-endpoint probe at http://192.168.1.147:3000 used by the downstream testing stage to confirm availability and host-qualified preview URLs"
   ],
   "constraints": [
-    "The required 14 REST endpoint paths and methods remain stable; supporting endpoints are additive and environment-scoped.",
-    "Routes cannot directly access SQL, filesystem APIs, child processes, Docker, or raw sandbox HTTP.",
-    "Long-running lifecycle and pipeline operations return HTTP 202 after persisting an owned, pollable transitional state; in-memory jobs and mutexes are never authoritative.",
-    "Environment lifecycle transitions use PostgreSQL compare-and-set updates; pipeline runs allow at most one active run per environment.",
-    "Sandbox generation reserves ports transactionally, renders into a temporary directory, atomically replaces files, and rolls back metadata and filesystem state on failure.",
-    "Every environment-scoped operation verifies project ownership; file reads also require an allowlist, realpath confinement, and bounded file size.",
-    "Docker commands use fixed executable argument arrays, bounded timeouts, and output limits; request data is never interpolated into a shell.",
-    "Generated Compose files cannot use backend-container-local host bind paths; working_dir is a control-plane CLI and file-browser path, while sandbox persistence uses images, named volumes, and goneops_net.",
-    "Every generated service must publish a resource-prefix network alias on goneops_net; web must address db, redis, and mq through those unique aliases rather than shared Compose service names, which are reserved for same-project declarations such as depends_on.",
-    "The checked-in sandbox Compose template and the generator's inline fallback must emit equivalent network aliases and dependency host values until the inline fallback is removed.",
-    "Persisted transitional lifecycle and pipeline states must be idempotently reconciled after backend restart without duplicate steps, deployments, services, secrets, or ports.",
-    "Terminal access is localhost-only and restricted to the owned running sandbox web container, never the backend container or host shell.",
-    "Secrets are localhost-only plaintext for the MVP, masked by default, excluded from logs, and documented as not production-safe.",
-    "Frontend runtime data must come from real backend APIs; unsupported services and controls are disabled instead of mocked.",
-    "Persisted selectedEnvironmentId is valid only when it belongs to selectedProject; after project data loads or refreshes, stale selections repair to that project's first environment or clear when none exists, updating localStorage in the same transition.",
-    "Pipeline history requests from the Pipelines page require both selectedProjectId and selectedEnvironmentId and send environment_id so project-level history cannot leak across environment views.",
-    "The iframe preview is best-effort; server-side Test API is the reliable integration path.",
-    "Implementation is conformant only after Compose rendering checks, focused environment-selection and pipeline request tests, the frontend build, and all seven Playwright E2E specs pass."
+    "PUBLIC_HOST must default to 'localhost' when unset so local/dev runs without the env var continue to function unchanged.",
+    "The host value must be read at module scope (not per call) consistent with the existing SANDBOX_BASE_DIR pattern; behavior is fixed at process start, so the backend container must be rebuilt/restarted to pick up a changed PUBLIC_HOST.",
+    "Only user-navigable preview URLs (preview_url in generator.js, previewUrl in runner.js run/restart) adopt PUBLIC_HOST.",
+    "Internal connection strings (postgresql/redis/amqp at generator.js lines 126/130/134) and the container healthcheck (generator.js line 281) must remain on localhost because they resolve inside the container or local-developer context, not from a remote browser.",
+    "generator.js and runner.js must produce identical host-qualified URL formatting (http://${PUBLIC_HOST}:${port}) so initial generation and subsequent run/restart never disagree on the preview host.",
+    "No API contract, route, or persistence schema changes; preview_url remains a single string column populated with the host-qualified value.",
+    "Acceptance for the downstream testing stage requires all 9 Playwright tests passing and an environment preview_url of http://192.168.1.147:PORT (not localhost), with the public site at http://192.168.1.147:3000 returning HTTP 200."
   ]
 }

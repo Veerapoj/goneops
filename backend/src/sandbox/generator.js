@@ -6,6 +6,7 @@ const { allocatePorts } = require('./ports');
 const { generateReadme } = require('./readme');
 
 const SANDBOX_BASE = process.env.SANDBOX_BASE_DIR || '/tmp/goneops-sandboxes';
+const PUBLIC_HOST = process.env.PUBLIC_HOST || 'localhost';
 
 async function generateSandbox(projectId, environmentId) {
   const project = await query('SELECT * FROM projects WHERE id = $1', [projectId]);
@@ -90,7 +91,7 @@ async function generateSandbox(projectId, environmentId) {
 
     await query(
       'UPDATE environments SET working_dir = $1, preview_url = $2, updated_at = NOW() WHERE id = $3',
-      [workingDir, `http://localhost:${webPort}`, environmentId]
+      [workingDir, `http://${PUBLIC_HOST}:${webPort}`, environmentId]
     );
   } catch (genErr) {
     try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (e) { /* ignore */ }

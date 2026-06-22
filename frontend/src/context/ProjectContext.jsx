@@ -78,6 +78,19 @@ export function ProjectProvider({ children }) {
   const selectedEnvironment =
     selectedProject?.environments?.find((e) => e.id === selectedEnvironmentId) || null;
 
+  useEffect(() => {
+    if (!selectedProject) return;
+    if (selectedEnvironment) return;
+    const envs = selectedProject.environments || [];
+    if (envs.length > 0) {
+      setSelectedEnvironmentId(envs[0].id);
+      localStorage.setItem('selectedEnvironmentId', envs[0].id);
+    } else {
+      setSelectedEnvironmentId(null);
+      localStorage.removeItem('selectedEnvironmentId');
+    }
+  }, [selectedProject, selectedEnvironment]);
+
   return (
     <ProjectContext.Provider
       value={{

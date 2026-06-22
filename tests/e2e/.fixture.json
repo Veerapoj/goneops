@@ -1,20 +1,20 @@
 {
   "project": {
-    "id": 18,
-    "name": "e2e-1782035482787-3bkpr",
-    "created_at": "2026-06-21T09:51:22.836Z",
-    "updated_at": "2026-06-21T09:51:22.836Z"
+    "id": 108,
+    "name": "e2e-1782110800169-xmkzk",
+    "created_at": "2026-06-22T06:46:40.319Z",
+    "updated_at": "2026-06-22T06:46:40.319Z"
   },
   "environment": {
-    "id": 14,
-    "project_id": 18,
+    "id": 106,
+    "project_id": 108,
     "name": "dev",
     "resource_prefix": null,
     "status": "stopped",
     "preview_url": "",
     "working_dir": "",
-    "created_at": "2026-06-21T09:51:22.870Z",
-    "updated_at": "2026-06-21T09:51:22.870Z"
+    "created_at": "2026-06-22T06:46:40.451Z",
+    "updated_at": "2026-06-22T06:46:40.451Z"
   },
-  "projectName": "e2e-1782035482787-3bkpr"
+  "projectName": "e2e-1782110800169-xmkzk"
 }

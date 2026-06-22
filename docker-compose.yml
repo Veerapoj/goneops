@@ -33,6 +33,7 @@ services:
       - SANDBOX_BASE_DIR=/tmp/goneops-sandboxes
       - SANDBOX_PORT_BASE=20000
       - NODE_ENV=development
+      - PUBLIC_HOST=192.168.1.147
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - goneops_sandboxes:/tmp/goneops-sandboxes

@@ -3,6 +3,7 @@ const { query } = require('../lib/db');
 const { updateEnvironmentStatus } = require('../services/environmentService');
 
 const MAX_OUTPUT_BYTES = 1024 * 1024;
+const PUBLIC_HOST = process.env.PUBLIC_HOST || 'localhost';
 
 function execCommand(file, args, cwd) {
   return new Promise((resolve, reject) => {
@@ -77,7 +78,7 @@ async function runSandbox(projectId, environmentId) {
           'SELECT host_port FROM sandbox_ports WHERE environment_id = $1 AND role = $2',
           [environmentId, 'web']
         );
-        const previewUrl = ports.rows.length ? `http://localhost:${ports.rows[0].host_port}` : '';
+        const previewUrl = ports.rows.length ? `http://${PUBLIC_HOST}:${ports.rows[0].host_port}` : '';
         await updateEnvironmentStatus(environmentId, 'running', previewUrl);
         await query(
           "UPDATE services SET status = 'healthy' WHERE environment_id = $1",
@@ -154,7 +155,7 @@ async function restartSandbox(projectId, environmentId) {
           'SELECT host_port FROM sandbox_ports WHERE environment_id = $1 AND role = $2',
           [environmentId, 'web']
         );
-        const previewUrl = ports.rows.length ? `http://localhost:${ports.rows[0].host_port}` : '';
+        const previewUrl = ports.rows.length ? `http://${PUBLIC_HOST}:${ports.rows[0].host_port}` : '';
         await updateEnvironmentStatus(environmentId, 'running', previewUrl);
         await query(
           "UPDATE services SET status = 'healthy' WHERE environment_id = $1",
