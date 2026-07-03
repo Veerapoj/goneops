@@ -1,205 +1,6 @@
--- Create database schema for GoneOps
+const { query } = require('../lib/db');
 
--- 1. Projects Table
-CREATE TABLE IF NOT EXISTS projects (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(255) UNIQUE NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
--- 2. Environments Table
-CREATE TABLE IF NOT EXISTS environments (
-    id SERIAL PRIMARY KEY,
-    project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
-    name VARCHAR(50) NOT NULL,
-    resource_prefix VARCHAR(128),
-    status VARCHAR(50) DEFAULT 'stopped' CHECK (status IN ('stopped','generating','starting','running','stopping','restarting','failed')),
-    preview_url VARCHAR(255),
-    working_dir VARCHAR(512),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT unique_project_env UNIQUE (project_id, name),
-    CONSTRAINT unique_resource_prefix UNIQUE (resource_prefix)
-);
-CREATE INDEX IF NOT EXISTS idx_environments_resource_prefix ON environments(resource_prefix);
-
--- 3. Services Table
-CREATE TABLE IF NOT EXISTS services (
-    id SERIAL PRIMARY KEY,
-    environment_id INTEGER REFERENCES environments(id) ON DELETE CASCADE,
-    name VARCHAR(100) NOT NULL, -- e.g., 'Node.js', 'PostgreSQL', 'Redis', 'RabbitMQ'
-    type VARCHAR(50) NOT NULL, -- e.g., 'runtime', 'database', 'cache', 'queue'
-    status VARCHAR(50) DEFAULT 'unhealthy', -- e.g., 'healthy', 'unhealthy'
-    port INTEGER NOT NULL,
-    config JSONB DEFAULT '{}'::jsonb,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT unique_environment_service UNIQUE (environment_id, name)
-);
-
--- 4. Deployments Table
-CREATE TABLE IF NOT EXISTS deployments (
-    id SERIAL PRIMARY KEY,
-    project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
-    environment_id INTEGER REFERENCES environments(id) ON DELETE CASCADE,
-    version VARCHAR(50) NOT NULL DEFAULT 'v1.0.0',
-    status VARCHAR(50) NOT NULL DEFAULT 'pending', -- e.g., 'pending', 'running', 'success', 'failed'
-    logs TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
--- 5. Pipeline Runs Table
-CREATE TABLE IF NOT EXISTS pipeline_runs (
-    id SERIAL PRIMARY KEY,
-    project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
-    environment_id INTEGER REFERENCES environments(id) ON DELETE CASCADE NOT NULL,
-    status VARCHAR(50) DEFAULT 'pending' CHECK (status IN ('pending','running','success','failed')),
-    duration_ms INTEGER DEFAULT 0,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-CREATE INDEX IF NOT EXISTS idx_pipeline_runs_environment ON pipeline_runs(environment_id);
-CREATE INDEX IF NOT EXISTS idx_pipeline_runs_env_created ON pipeline_runs(environment_id, created_at DESC);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_pipeline_runs_active_once
-    ON pipeline_runs(environment_id) WHERE status IN ('pending', 'running');
-
--- 6. Pipeline Steps Table
-CREATE TABLE IF NOT EXISTS pipeline_steps (
-    id SERIAL PRIMARY KEY,
-    pipeline_run_id INTEGER REFERENCES pipeline_runs(id) ON DELETE CASCADE,
-    name VARCHAR(100) NOT NULL,
-    status VARCHAR(50) DEFAULT 'pending' CHECK (status IN ('pending','running','success','failed','skipped')),
-    duration_ms INTEGER DEFAULT 0,
-    logs TEXT,
-    step_order INTEGER NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT unique_run_step_order UNIQUE (pipeline_run_id, step_order)
-);
-
--- 7. Secrets Table
-CREATE TABLE IF NOT EXISTS secrets (
-    id SERIAL PRIMARY KEY,
-    project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
-    environment_id INTEGER REFERENCES environments(id) ON DELETE CASCADE,
-    key VARCHAR(255) NOT NULL,
-    value TEXT NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT unique_env_secret_key UNIQUE (environment_id, key)
-);
-
--- 8. Sandbox Ports Table
-CREATE TABLE IF NOT EXISTS sandbox_ports (
-    id SERIAL PRIMARY KEY,
-    environment_id INTEGER REFERENCES environments(id) ON DELETE CASCADE,
-    role VARCHAR(20) NOT NULL CHECK (role IN ('web','db','redis','mq')),
-    host_port INTEGER UNIQUE NOT NULL,
-    container_port INTEGER NOT NULL DEFAULT 80,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT unique_environment_port_role UNIQUE (environment_id, role)
-);
-CREATE INDEX IF NOT EXISTS idx_sandbox_ports_env ON sandbox_ports(environment_id);
-CREATE INDEX IF NOT EXISTS idx_environments_project ON environments(project_id);
-CREATE INDEX IF NOT EXISTS idx_services_environment ON services(environment_id);
-CREATE INDEX IF NOT EXISTS idx_deployments_project ON deployments(project_id);
-CREATE INDEX IF NOT EXISTS idx_deployments_environment ON deployments(environment_id);
-CREATE INDEX IF NOT EXISTS idx_pipeline_runs_project ON pipeline_runs(project_id);
-CREATE INDEX IF NOT EXISTS idx_pipeline_steps_run ON pipeline_steps(pipeline_run_id);
-CREATE INDEX IF NOT EXISTS idx_secrets_project ON secrets(project_id);
-CREATE INDEX IF NOT EXISTS idx_secrets_environment ON secrets(environment_id);
-
--- Seed Demo Data
--- Insert demo project
-INSERT INTO projects (name) VALUES ('goneops-demo') ON CONFLICT DO NOTHING;
-
--- Insert demo environment metadata. It remains stopped until a real sandbox is generated.
-INSERT INTO environments (project_id, name, status, preview_url, working_dir)
-SELECT id, 'dev', 'stopped', NULL, NULL
-FROM projects WHERE name = 'goneops-demo'
-ON CONFLICT (project_id, name) DO NOTHING;
-
--- Insert demo services
-INSERT INTO services (environment_id, name, type, status, port, config)
-SELECT e.id, 'Node.js Runtime', 'runtime', 'unhealthy', 8080, '{"version":"20-alpine"}'::jsonb
-FROM environments e JOIN projects p ON e.project_id = p.id
-WHERE p.name = 'goneops-demo' AND e.name = 'dev'
-ON CONFLICT DO NOTHING;
-
-INSERT INTO services (environment_id, name, type, status, port, config)
-SELECT e.id, 'PostgreSQL Database', 'database', 'unhealthy', 5432, '{"database":"goneops_demo_dev_db","username":"goneops"}'::jsonb
-FROM environments e JOIN projects p ON e.project_id = p.id
-WHERE p.name = 'goneops-demo' AND e.name = 'dev'
-ON CONFLICT DO NOTHING;
-
-INSERT INTO services (environment_id, name, type, status, port, config)
-SELECT e.id, 'Redis Cache', 'cache', 'unhealthy', 6379, '{"host":"goneops_demo_dev_redis"}'::jsonb
-FROM environments e JOIN projects p ON e.project_id = p.id
-WHERE p.name = 'goneops-demo' AND e.name = 'dev'
-ON CONFLICT DO NOTHING;
-
-INSERT INTO services (environment_id, name, type, status, port, config)
-SELECT e.id, 'RabbitMQ Queue', 'queue', 'unhealthy', 5672, '{"username":"goneops"}'::jsonb
-FROM environments e JOIN projects p ON e.project_id = p.id
-WHERE p.name = 'goneops-demo' AND e.name = 'dev'
-ON CONFLICT DO NOTHING;
-
--- Insert localhost-only demo secrets. These are plaintext and not production-safe.
-INSERT INTO secrets (project_id, environment_id, key, value)
-SELECT p.id, e.id, 'DATABASE_URL', 'postgresql://postgres:postgres@localhost:5432/goneops_demo_dev_db'
-FROM environments e JOIN projects p ON e.project_id = p.id
-WHERE p.name = 'goneops-demo' AND e.name = 'dev'
-ON CONFLICT (environment_id, key) DO NOTHING;
-
-INSERT INTO secrets (project_id, environment_id, key, value)
-SELECT p.id, e.id, 'REDIS_URL', 'redis://localhost:6379'
-FROM environments e JOIN projects p ON e.project_id = p.id
-WHERE p.name = 'goneops-demo' AND e.name = 'dev'
-ON CONFLICT (environment_id, key) DO NOTHING;
-
-INSERT INTO secrets (project_id, environment_id, key, value)
-SELECT p.id, e.id, 'RABBITMQ_URL', 'amqp://guest:guest@localhost:5672'
-FROM environments e JOIN projects p ON e.project_id = p.id
-WHERE p.name = 'goneops-demo' AND e.name = 'dev'
-ON CONFLICT (environment_id, key) DO NOTHING;
-
--- Insert a sample pipeline run for goneops-demo (scoped to dev environment)
-WITH new_run AS (
-    INSERT INTO pipeline_runs (project_id, environment_id, status, duration_ms)
-    SELECT p.id, e.id, 'success', 47320
-    FROM projects p
-    JOIN environments e ON e.project_id = p.id AND e.name = 'dev'
-    WHERE p.name = 'goneops-demo'
-      AND NOT EXISTS (
-        SELECT 1 FROM pipeline_runs pr
-        WHERE pr.project_id = p.id AND pr.environment_id = e.id AND pr.status = 'success' AND pr.duration_ms = 47320
-      )
-    RETURNING id
-)
-INSERT INTO pipeline_steps (pipeline_run_id, name, status, duration_ms, logs, step_order)
-SELECT
-    r.id,
-    s.name,
-    'success',
-    s.duration_ms,
-    s.logs,
-    s.step_order
-FROM new_run r
-CROSS JOIN (VALUES
-    (1, 'Checkout',     3210,  '[SIMULATED PIPELINE] Repository checkout simulation completed'),
-    (2, 'Install',      8740,  '[SIMULATED PIPELINE] Dependency installation simulation completed'),
-    (3, 'Lint & Test',  12580, '[SIMULATED PIPELINE] Lint and test simulation completed'),
-    (4, 'Build',        15930, '[SIMULATED PIPELINE] Build simulation completed'),
-    (5, 'Deploy',       5460,  '[SIMULATED PIPELINE] Deployment simulation completed'),
-    (6, 'Smoke Test',   1400,  '[SIMULATED PIPELINE] Smoke-test simulation completed')
-) AS s(step_order, name, duration_ms, logs);
-
--- ============================================================
--- GONEOPS INVENTORY PLATFORM: Phase 1 Schema (Read-Only Visibility)
--- ============================================================
-
--- 9. Providers Table
+const inventorySchemaSql = `
 CREATE TABLE IF NOT EXISTS providers (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
@@ -215,7 +16,6 @@ CREATE TABLE IF NOT EXISTS providers (
 CREATE INDEX IF NOT EXISTS idx_providers_type ON providers(type);
 CREATE INDEX IF NOT EXISTS idx_providers_status ON providers(status);
 
--- 10. Hosts Table
 CREATE TABLE IF NOT EXISTS hosts (
     id SERIAL PRIMARY KEY,
     provider_id INTEGER REFERENCES providers(id) ON DELETE SET NULL,
@@ -246,7 +46,6 @@ CREATE TABLE IF NOT EXISTS hosts (
 CREATE INDEX IF NOT EXISTS idx_hosts_provider ON hosts(provider_id);
 CREATE INDEX IF NOT EXISTS idx_hosts_status ON hosts(status);
 
--- 11. VMs Table
 CREATE TABLE IF NOT EXISTS vms (
     id SERIAL PRIMARY KEY,
     host_id INTEGER REFERENCES hosts(id) ON DELETE SET NULL,
@@ -267,7 +66,6 @@ CREATE TABLE IF NOT EXISTS vms (
 CREATE INDEX IF NOT EXISTS idx_vms_host ON vms(host_id);
 CREATE INDEX IF NOT EXISTS idx_vms_provider ON vms(provider_id);
 
--- 12. Containers Table
 CREATE TABLE IF NOT EXISTS containers (
     id SERIAL PRIMARY KEY,
     host_id INTEGER REFERENCES hosts(id) ON DELETE SET NULL,
@@ -291,7 +89,6 @@ CREATE INDEX IF NOT EXISTS idx_containers_host ON containers(host_id);
 CREATE INDEX IF NOT EXISTS idx_containers_provider ON containers(provider_id);
 CREATE INDEX IF NOT EXISTS idx_containers_status ON containers(status);
 
--- 13. Applications Table
 CREATE TABLE IF NOT EXISTS applications (
     id SERIAL PRIMARY KEY,
     project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
@@ -312,7 +109,6 @@ CREATE TABLE IF NOT EXISTS applications (
 CREATE INDEX IF NOT EXISTS idx_applications_project ON applications(project_id);
 CREATE INDEX IF NOT EXISTS idx_applications_criticality ON applications(criticality);
 
--- 14. Certificates Table
 CREATE TABLE IF NOT EXISTS certificates (
     id SERIAL PRIMARY KEY,
     application_id INTEGER REFERENCES applications(id) ON DELETE SET NULL,
@@ -332,7 +128,6 @@ CREATE TABLE IF NOT EXISTS certificates (
 CREATE INDEX IF NOT EXISTS idx_certificates_application ON certificates(application_id);
 CREATE INDEX IF NOT EXISTS idx_certificates_status ON certificates(status);
 
--- 15. Sync Jobs Table
 CREATE TABLE IF NOT EXISTS sync_jobs (
     id SERIAL PRIMARY KEY,
     provider_id INTEGER REFERENCES providers(id) ON DELETE CASCADE,
@@ -348,11 +143,6 @@ CREATE TABLE IF NOT EXISTS sync_jobs (
 CREATE INDEX IF NOT EXISTS idx_sync_jobs_provider ON sync_jobs(provider_id);
 CREATE INDEX IF NOT EXISTS idx_sync_jobs_status ON sync_jobs(status);
 
--- ============================================================
--- SEED DATA: GoneOps Inventory Platform Demo Data
--- ============================================================
-
--- Seed providers
 INSERT INTO providers (name, type, status, config, nodes_count) VALUES
     ('Proxmox Cluster A', 'proxmox', 'connected', '{"endpoint":"https://proxmox.example.com:8006","nodes":5}'::jsonb, 5),
     ('Kubernetes Prod', 'kubernetes', 'connected', '{"endpoint":"https://k8s-api.example.com:6443","nodes":3}'::jsonb, 3),
@@ -360,9 +150,8 @@ INSERT INTO providers (name, type, status, config, nodes_count) VALUES
     ('Cloud Console', 'aws', 'disconnected', '{"region":"us-east-1"}'::jsonb, 0)
 ON CONFLICT (name) DO NOTHING;
 
--- Seed hosts
 WITH prov AS (SELECT id, name FROM providers)
-INSERT INTO hosts (provider_id, hostname, host_type, ip_address, os_name, os_version, cpu_cores, cpu_usage_pct, memory_total_gb, memory_usage_pct, disk_total_gb, disk_usage_pct, status, owner, project_name, environment) 
+INSERT INTO hosts (provider_id, hostname, host_type, ip_address, os_name, os_version, cpu_cores, cpu_usage_pct, memory_total_gb, memory_usage_pct, disk_total_gb, disk_usage_pct, status, owner, project_name, environment)
 SELECT p.id, h.hostname, h.host_type, h.ip_address, h.os_name, h.os_version, h.cpu_cores, h.cpu_usage_pct, h.memory_total_gb, h.memory_usage_pct, h.disk_total_gb, h.disk_usage_pct, h.status, h.owner, h.project_name, h.environment
 FROM prov p, (VALUES
     ('Proxmox Cluster A', 'app01', 'vm', '10.1.1.10', 'Ubuntu', '22.04 LTS', 8, 65.5, 32, 70.2, 100, 45, 'running', 'Infrastructure Team', 'Core Platform', 'Production'),
@@ -374,7 +163,6 @@ FROM prov p, (VALUES
 WHERE p.name = h.provider_name
 AND NOT EXISTS (SELECT 1 FROM hosts WHERE hostname = h.hostname);
 
--- Seed containers
 WITH h AS (SELECT id, hostname FROM hosts), prov AS (SELECT id, name FROM providers)
 INSERT INTO containers (host_id, provider_id, container_id, name, image, image_tag, status, ports, cpu_usage_pct, memory_usage_mb)
 SELECT h.id, p.id, c.container_id, c.name, c.image, c.image_tag, c.status, c.ports::jsonb, c.cpu_usage_pct, c.memory_usage_mb
@@ -389,7 +177,6 @@ JOIN (VALUES
 LEFT JOIN prov p ON p.name = c.provider_name
 WHERE NOT EXISTS (SELECT 1 FROM containers WHERE container_id = c.container_id);
 
--- Seed applications  
 INSERT INTO applications (name, owner, team, business_unit, contact_email, sla_level, criticality, cost_center, status, env_count) VALUES
     ('Payment System', 'Digital Team', 'Digital Services', 'Digital Services', 'platform@company.com', '99.9%', 'high', 'CC-2024-001', 'running', 3),
     ('Inventory System', 'Operations Team', 'Platform Operations', 'Operations', 'ops@company.com', '99.5%', 'medium', 'CC-2024-002', 'running', 2),
@@ -397,14 +184,13 @@ INSERT INTO applications (name, owner, team, business_unit, contact_email, sla_l
     ('User Portal', 'Frontend Team', 'Web Applications', 'Digital Services', 'web@company.com', '99.9%', 'high', 'CC-2024-004', 'running', 3)
 ON CONFLICT (name) DO NOTHING;
 
--- Seed certificates
 WITH cert_seed AS (
     SELECT *
     FROM (VALUES
-    ('Payment System', 'api.company.com', 'Let''s Encrypt', CURRENT_TIMESTAMP - INTERVAL '65 days', CURRENT_TIMESTAMP + INTERVAL '25 days', 'LB01', 'payment-api', 'warning'),
-    ('User Portal', 'app.company.com', 'Let''s Encrypt', CURRENT_TIMESTAMP - INTERVAL '60 days', CURRENT_TIMESTAMP + INTERVAL '120 days', 'LB02', 'user-portal', 'ok'),
-    ('Analytics Platform', 'admin.company.com', 'DigiCert', CURRENT_TIMESTAMP - INTERVAL '90 days', CURRENT_TIMESTAMP + INTERVAL '180 days', 'LB03', 'admin-panel', 'ok'),
-    (NULL, 'old-api.company.com', 'Self-Signed', CURRENT_TIMESTAMP - INTERVAL '300 days', CURRENT_TIMESTAMP + INTERVAL '5 days', 'Legacy', 'deprecated', 'critical')
+        ('Payment System', 'api.company.com', 'Let''s Encrypt', CURRENT_TIMESTAMP - INTERVAL '65 days', CURRENT_TIMESTAMP + INTERVAL '25 days', 'LB01', 'payment-api', 'warning'),
+        ('User Portal', 'app.company.com', 'Let''s Encrypt', CURRENT_TIMESTAMP - INTERVAL '60 days', CURRENT_TIMESTAMP + INTERVAL '120 days', 'LB02', 'user-portal', 'ok'),
+        ('Analytics Platform', 'admin.company.com', 'DigiCert', CURRENT_TIMESTAMP - INTERVAL '90 days', CURRENT_TIMESTAMP + INTERVAL '180 days', 'LB03', 'admin-panel', 'ok'),
+        (NULL, 'old-api.company.com', 'Self-Signed', CURRENT_TIMESTAMP - INTERVAL '300 days', CURRENT_TIMESTAMP + INTERVAL '5 days', 'Legacy', 'deprecated', 'critical')
     ) AS c(app_name, domain, issuer, valid_from, expires_at, points_to, service_name, status)
 )
 INSERT INTO certificates (application_id, domain, issuer, valid_from, expires_at, expires_in_days, points_to, service_name, status)
@@ -413,7 +199,6 @@ FROM cert_seed c
 LEFT JOIN applications app ON app.name = c.app_name
 WHERE NOT EXISTS (SELECT 1 FROM certificates WHERE domain = c.domain);
 
--- Seed sync jobs
 WITH prov AS (SELECT id, name FROM providers)
 INSERT INTO sync_jobs (provider_id, job_type, status, found_count, removed_count, message, started_at, completed_at)
 SELECT p.id, j.job_type, j.status, j.found_count, j.removed_count, j.message, j.started_at, j.completed_at
@@ -425,3 +210,10 @@ FROM prov p, (VALUES
 ) AS j(provider_name, job_type, status, found_count, removed_count, message, started_at, completed_at)
 WHERE p.name = j.provider_name
 AND NOT EXISTS (SELECT 1 FROM sync_jobs sj WHERE sj.provider_id = p.id AND sj.job_type = j.job_type AND sj.message = j.message);
+`;
+
+async function ensureInventorySchema() {
+  await query(inventorySchemaSql);
+}
+
+module.exports = { ensureInventorySchema };

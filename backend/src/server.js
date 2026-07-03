@@ -5,12 +5,14 @@ const { createRedisClient } = require('./lib/redis');
 const { createMQClient } = require('./lib/mq');
 const { handleTerminal } = require('./routes/terminal');
 const { reconcileOnStartup } = require('./operations/reconciler');
+const { ensureInventorySchema } = require('./services/inventorySchema');
 
 const PORT = process.env.PORT || 4000;
 
 async function main() {
   try {
     await createPool();
+    await ensureInventorySchema();
     console.log('[goneops] PostgreSQL connected');
   } catch (err) {
     console.error('[goneops] PostgreSQL connection failed, retrying...', err.message);

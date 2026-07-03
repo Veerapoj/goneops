@@ -13,6 +13,16 @@ import Terminal from './pages/Terminal';
 import Logs from './pages/Logs';
 import Secrets from './pages/Secrets';
 import Settings from './pages/Settings';
+import PlatformOverview from './pages/platform/PlatformOverview';
+import Providers from './pages/platform/Providers';
+import DiscoveryJobs from './pages/platform/DiscoveryJobs';
+import Hosts from './pages/platform/Hosts';
+import Containers from './pages/platform/Containers';
+import Applications from './pages/platform/Applications';
+import ServiceMap from './pages/platform/ServiceMap';
+import Operations from './pages/platform/Operations';
+import Capacity from './pages/platform/Capacity';
+import Governance from './pages/platform/Governance';
 
 export default function App() {
   return (
@@ -31,6 +41,16 @@ export default function App() {
           <Route path="logs" element={<Logs />} />
           <Route path="secrets" element={<Secrets />} />
           <Route path="settings" element={<Settings />} />
+          <Route path="platform" element={<PlatformOverview />} />
+          <Route path="platform/providers" element={<Providers />} />
+          <Route path="platform/discovery" element={<DiscoveryJobs />} />
+          <Route path="platform/inventory" element={<Hosts />} />
+          <Route path="platform/containers" element={<Containers />} />
+          <Route path="platform/applications" element={<Applications />} />
+          <Route path="platform/mapping" element={<ServiceMap />} />
+          <Route path="platform/operations" element={<Operations />} />
+          <Route path="platform/capacity" element={<Capacity />} />
+          <Route path="platform/governance" element={<Governance />} />
         </Route>
       </Routes>
     </ProjectProvider>

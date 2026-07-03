@@ -131,4 +131,39 @@ export async function fetchDatabases(projectId, environmentId) {
   return data;
 }
 
+export async function fetchPlatformDashboard() {
+  const { data } = await client.get('/platform/dashboard');
+  return data;
+}
+
+export async function fetchProviders() {
+  const { data } = await client.get('/platform/providers');
+  return data;
+}
+
+export async function fetchHosts() {
+  const { data } = await client.get('/platform/hosts');
+  return data;
+}
+
+export async function fetchContainers() {
+  const { data } = await client.get('/platform/containers');
+  return data;
+}
+
+export async function fetchApplications() {
+  const { data } = await client.get('/platform/applications');
+  return data;
+}
+
+export async function fetchCertificates() {
+  const { data } = await client.get('/platform/certificates');
+  return data;
+}
+
+export async function fetchSyncJobs() {
+  const { data } = await client.get('/platform/sync-jobs');
+  return data;
+}
+
 export default client;

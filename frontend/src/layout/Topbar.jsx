@@ -15,6 +15,16 @@ const routeTitles = {
   '/logs': 'Logs',
   '/secrets': 'Secrets',
   '/settings': 'Settings',
+  '/platform': 'Platform Overview',
+  '/platform/providers': 'Providers',
+  '/platform/discovery': 'Discovery Jobs',
+  '/platform/inventory': 'Hosts',
+  '/platform/containers': 'Containers',
+  '/platform/applications': 'Applications',
+  '/platform/mapping': 'Service Map',
+  '/platform/operations': 'Operations',
+  '/platform/capacity': 'Capacity',
+  '/platform/governance': 'Governance',
 };
 
 export default function Topbar() {
