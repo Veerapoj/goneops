@@ -1,4 +1,4 @@
-import { NavLink } from 'react-router-dom';
+import { NavLink, Outlet } from 'react-router-dom';
 import {
   LayoutDashboard, Plug, RefreshCw, Server, Container, Boxes,
   GitGraph, HardDrive, Cpu, Shield, History, Settings, Globe,
@@ -66,7 +66,7 @@ function PlatformNavItem({ to, label, icon: Icon, exact }) {
   );
 }
 
-export default function PlatformLayout({ children }) {
+export default function PlatformLayout() {
   return (
     <div className="flex h-screen bg-gray-100">
       {/* Platform Sidebar */}
@@ -131,7 +131,7 @@ export default function PlatformLayout({ children }) {
 
         {/* Page Content */}
         <div className="flex-1 overflow-y-auto">
-          {children}
+          <Outlet />
         </div>
       </div>
     </div>
