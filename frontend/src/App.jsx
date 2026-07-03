@@ -1,6 +1,7 @@
 import { Routes, Route } from 'react-router-dom';
 import { ProjectProvider } from './context/ProjectContext';
 import Layout from './layout/Layout';
+import PlatformLayout from './layout/PlatformLayout';
 import Overview from './pages/Overview';
 import Environments from './pages/Environments';
 import Services from './pages/Services';
@@ -28,6 +29,7 @@ export default function App() {
   return (
     <ProjectProvider>
       <Routes>
+        {/* DX User Layout — Original GoneOps */}
         <Route element={<Layout />}>
           <Route index element={<Overview />} />
           <Route path="environments" element={<Environments />} />
@@ -41,6 +43,10 @@ export default function App() {
           <Route path="logs" element={<Logs />} />
           <Route path="secrets" element={<Secrets />} />
           <Route path="settings" element={<Settings />} />
+        </Route>
+        
+        {/* Platform Admin Layout — Separate from DX */}
+        <Route element={<PlatformLayout />}>
           <Route path="platform" element={<PlatformOverview />} />
           <Route path="platform/providers" element={<Providers />} />
           <Route path="platform/discovery" element={<DiscoveryJobs />} />

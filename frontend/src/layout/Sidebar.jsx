@@ -63,46 +63,6 @@ const navGroups = [
       { to: '/logs', label: 'Logs', icon: ScrollText },
     ],
   },
-  {
-    label: 'PLATFORM',
-    items: [
-      { to: '/platform', label: 'Overview', ariaLabel: 'Platform Overview', icon: LayoutDashboard, exact: true },
-    ],
-  },
-  {
-    label: 'DISCOVERY',
-    items: [
-      { to: '/platform/providers', label: 'Providers', icon: Plug },
-      { to: '/platform/discovery', label: 'Discovery Jobs', icon: RefreshCw },
-    ],
-  },
-  {
-    label: 'INVENTORY',
-    items: [
-      { to: '/platform/inventory', label: 'Hosts', icon: Server },
-      { to: '/platform/containers', label: 'Containers', icon: Container },
-      { to: '/platform/applications', label: 'Applications', icon: Boxes },
-    ],
-  },
-  {
-    label: 'MAPPING',
-    items: [
-      { to: '/platform/mapping', label: 'Service Map', icon: GitGraph },
-    ],
-  },
-  {
-    label: 'OPERATIONS',
-    items: [
-      { to: '/platform/operations', label: 'Operations', icon: HardDrive },
-      { to: '/platform/capacity', label: 'Capacity', icon: Cpu },
-    ],
-  },
-  {
-    label: 'GOVERNANCE',
-    items: [
-      { to: '/platform/governance', label: 'Governance', icon: Shield },
-    ],
-  },
 ];
 
 function NavItem({ to, label, ariaLabel, icon: Icon, exact }) {
