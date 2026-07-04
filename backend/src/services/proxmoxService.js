@@ -719,6 +719,153 @@ async function rejectRequest(approvalId, rejectedBy) {
   return { approved: false, rejected: true };
 }
 
+async function deleteInstance(providerId, vmid, actor, typeHint) {
+  const provider = await getProviderWithSecret(providerId);
+  if (!provider) throw Object.assign(new Error('Provider not found'), { code: 'not_found', status: 404 });
+
+  const client = buildClientFromProvider(provider);
+  let node, type;
+
+  if (typeHint && typeHint === 'lxc') {
+    const nodes = await proxmoxClient.getNodes(client);
+    let found = false;
+    for (const n of nodes) {
+      try {
+        await proxmoxClient.getLXC(client, n.node, vmid);
+        node = n.node;
+        type = 'lxc';
+        found = true;
+        break;
+      } catch (e) { continue; }
+    }
+    if (!found) throw Object.assign(new Error(`LXC ${vmid} not found on any node`), { code: 'not_found', status: 404 });
+  } else {
+    ({ node, type } = await locateVM(client, vmid));
+  }
+
+  const actionKey = type === 'lxc' ? 'lxc_delete' : 'vm_delete';
+
+  try {
+    let res;
+    if (type === 'lxc') {
+      res = await proxmoxClient.deleteLXC(client, node, vmid);
+    } else {
+      res = await proxmoxClient.deleteVM(client, node, vmid);
+    }
+
+    const upid = (res && res.data) || null;
+    if (upid) {
+      await insertTask({ upid, providerId: provider.id, node, vmid, type, action: actionKey });
+    }
+
+    await writeAuditLog({
+      actor: actor || 'system',
+      action: actionKey,
+      resource_type: type === 'lxc' ? 'lxc' : 'vm',
+      resource_id: vmid,
+      provider_id: provider.id,
+      result: 'success',
+      message: `${type === 'lxc' ? 'LXC' : 'VM'} ${vmid} deleted from node ${node}`,
+      metadata: { upid, node, type },
+    });
+
+    return { upid, node, type, message: `${type === 'lxc' ? 'LXC' : 'VM'} ${vmid} deletion submitted` };
+  } catch (e) {
+    await writeAuditLog({
+      actor: actor || 'system',
+      action: actionKey,
+      resource_type: type === 'lxc' ? 'lxc' : 'vm',
+      resource_id: vmid,
+      provider_id: provider.id,
+      result: 'failure',
+      message: `${type === 'lxc' ? 'LXC' : 'VM'} ${vmid} deletion failed: ${e.response ? `HTTP ${e.response.status}` : e.code || e.message}`,
+      metadata: { node, type },
+    });
+    throw e;
+  }
+}
+
+async function provisionInfrastructure(providerId, spec, actor) {
+  const provider = await getProviderWithSecret(providerId);
+  if (!provider) throw Object.assign(new Error('Provider not found'), { code: 'not_found', status: 404 });
+
+  const client = buildClientFromProvider(provider);
+  const nodes = await proxmoxClient.getNodes(client);
+  if (nodes.length === 0) {
+    throw Object.assign(new Error('No nodes available on provider'), { code: 'proxmox_error', status: 500 });
+  }
+  const targetNode = spec.node || nodes[0].node;
+
+  const results = [];
+
+  if (spec.items) {
+    for (const item of spec.items) {
+      const nextIdData = await proxmoxClient.getNextId(client);
+      const vmid = (nextIdData && nextIdData.nextid) || nextIdData;
+
+      if (!vmid) {
+        throw Object.assign(new Error('Could not obtain next VM ID from cluster'), { code: 'proxmox_error', status: 500 });
+      }
+
+      let res;
+      if (item.type === 'lxc') {
+        const oaTemplate = item.ostemplate || 'local:vztmpl/ubuntu-24.04-standard_24.04-1_amd64.tar.zst';
+        const config = {
+          ostemplate: oaTemplate,
+          vmid,
+          hostname: item.name,
+          storage: item.storage || 'local-lvm',
+          cores: item.cores || 2,
+          memory: item.memory || 1024,
+          swap: item.swap || 512,
+          rootfs: `${item.storage || 'local-lvm'}:${item.disk || 8}`,
+          net0: `name=eth0,bridge=vmbr0,ip=dhcp`,
+          password: item.password || 'changeme',
+          start: item.start !== false,
+          unprivileged: item.unprivileged !== false ? 1 : 0,
+          ...(item.extra || {}),
+        };
+        res = await proxmoxClient.createLXC(client, targetNode, config);
+      } else {
+        const config = {
+          vmid,
+          name: item.name,
+          memory: item.memory || 2048,
+          cores: item.cores || 2,
+          sockets: item.sockets || 1,
+          storage: item.storage || 'local-lvm',
+          ide2: `${item.storage || 'local-lvm'}:iso/${item.iso || 'ubuntu-24.04-live-server-amd64.iso'},media=cdrom`,
+          net0: 'virtio,bridge=vmbr0',
+          ostype: item.ostype || 'l26',
+          scsihw: 'virtio-scsi-pci',
+          ...(item.extra || {}),
+        };
+        res = await proxmoxClient.createVM(client, targetNode, config);
+      }
+
+      const upid = (res && res.data) || null;
+      if (upid) {
+        await insertTask({ upid, providerId: provider.id, node: targetNode, vmid, type: item.type, action: item.type === 'lxc' ? 'lxc_create' : 'vm_create' });
+      }
+
+      await writeAuditLog({
+        actor: actor || 'system',
+        action: item.type === 'lxc' ? 'lxc_create' : 'vm_create',
+        resource_type: item.type === 'lxc' ? 'lxc' : 'vm',
+        resource_id: vmid,
+        provider_id: provider.id,
+        result: 'success',
+        message: `${item.type === 'lxc' ? 'LXC' : 'VM'} ${item.name} (vmid ${vmid}) creation submitted on node ${targetNode}`,
+        metadata: { upid, vmid, name: item.name, node: targetNode, type: item.type },
+      });
+
+      results.push({ vmid, name: item.name, type: item.type, upid, node: targetNode });
+    }
+  }
+
+  return { results, node: targetNode, message: `${results.length} instances provisioned on node ${targetNode}` };
+}
+
 async function listTasks(limit = 100) {
   const res = await query(
     `SELECT * FROM proxmox_tasks ORDER BY created_at DESC LIMIT $1`,
@@ -740,6 +887,8 @@ module.exports = {
   writeAuditLog,
   locateVM,
   powerAction,
+  deleteInstance,
+  provisionInfrastructure,
   getTaskStatus,
   listTemplates,
   cloneTemplate,

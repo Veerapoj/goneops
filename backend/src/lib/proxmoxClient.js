@@ -205,6 +205,63 @@ async function rollbackSnapshot(client, node, vmid, type, snapname) {
   return data;
 }
 
+async function deleteVM(client, node, vmid) {
+  let instance;
+  if (typeof client.get === 'function') {
+    instance = client;
+  } else {
+    instance = createClient(client);
+  }
+  const { data } = await instance.delete(`/nodes/${node}/qemu/${vmid}`, { params: { 'destroy-unreferenced-disks': 1, purge: 1 } });
+  return data;
+}
+
+async function deleteLXC(client, node, vmid) {
+  let instance;
+  if (typeof client.get === 'function') {
+    instance = client;
+  } else {
+    instance = createClient(client);
+  }
+  const { data } = await instance.delete(`/nodes/${node}/lxc/${vmid}`, { params: { 'destroy-unreferenced-disks': 1, purge: 1 } });
+  return data;
+}
+
+async function createLXC(client, node, config) {
+  let instance;
+  if (typeof client.get === 'function') {
+    instance = client;
+  } else {
+    instance = createClient(client);
+  }
+  const { data } = await instance.post(`/nodes/${node}/lxc`, config);
+  return data;
+}
+
+async function createVM(client, node, config) {
+  let instance;
+  if (typeof client.get === 'function') {
+    instance = client;
+  } else {
+    instance = createClient(client);
+  }
+  const { data } = await instance.post(`/nodes/${node}/qemu`, config);
+  return data;
+}
+
+async function listStorageContent(client, node, storage, content) {
+  let instance;
+  if (typeof client.get === 'function') {
+    instance = client;
+  } else {
+    instance = createClient(client);
+  }
+  const params = {};
+  if (content) params.content = content;
+  const { data } = await instance.get(`/nodes/${node}/storage/${storage}/content`, { params });
+  return (data && data.data) || [];
+}
+
 module.exports = {
   createClient,
   testConnection,
@@ -216,6 +273,11 @@ module.exports = {
   startVM,
   stopVM,
   rebootVM,
+  deleteVM,
+  deleteLXC,
+  createLXC,
+  createVM,
+  listStorageContent,
   getTaskStatus,
   getNextId,
   cloneVM,

@@ -10,6 +10,7 @@ const {
   syncInventory,
   listAuditLogs,
   powerAction,
+  deleteInstance,
   getTaskStatus,
   listTemplates,
   cloneTemplate,
@@ -169,6 +170,42 @@ router.post('/vms/:id/reboot', requireRole('operator'), async (req, res, next) =
       throw err;
     }
     const result = await powerAction(parseInt(provider_id, 10), vmid, 'reboot');
+    res.json(result);
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.delete('/vms/:id', requireRole('admin'), async (req, res, next) => {
+  try {
+    const vmid = parseInt(req.params.id, 10);
+    const { provider_id } = req.body;
+    if (!provider_id) {
+      const err = new Error('provider_id is required');
+      err.status = 400;
+      err.code = 'validation_error';
+      throw err;
+    }
+    const actor = getActor(req);
+    const result = await deleteInstance(parseInt(provider_id, 10), vmid, actor);
+    res.json(result);
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.delete('/lxc/:id', requireRole('admin'), async (req, res, next) => {
+  try {
+    const vmid = parseInt(req.params.id, 10);
+    const { provider_id } = req.body;
+    if (!provider_id) {
+      const err = new Error('provider_id is required');
+      err.status = 400;
+      err.code = 'validation_error';
+      throw err;
+    }
+    const actor = getActor(req);
+    const result = await deleteInstance(parseInt(provider_id, 10), vmid, actor, 'lxc');
     res.json(result);
   } catch (e) {
     next(e);

@@ -298,4 +298,24 @@ export async function rejectRequest(id) {
   return data;
 }
 
+export async function deleteProxmoxVM(providerId, vmid) {
+  const { data } = await client.delete(`/proxmox/vms/${vmid}`, { data: { provider_id: providerId }, headers: getRoleHeaders() });
+  return data;
+}
+
+export async function deleteProxmoxLXC(providerId, vmid) {
+  const { data } = await client.delete(`/proxmox/lxc/${vmid}`, { data: { provider_id: providerId }, headers: getRoleHeaders() });
+  return data;
+}
+
+export async function fetchServiceMap() {
+  const { data } = await client.get('/platform/service-map');
+  return data;
+}
+
+export async function fetchCapacity() {
+  const { data } = await client.get('/platform/capacity');
+  return data;
+}
+
 export default client;

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Play, Square, RefreshCcw, Camera, RotateCcw, AlertTriangle, Loader2, RefreshCw, ChevronDown, ChevronRight } from 'lucide-react';
-import { fetchProxmoxProviders, fetchProxmoxVMs, fetchProxmoxVM, startVM, stopVM, rebootVM, createSnapshot } from '../../../api/client';
+import { Play, Square, RefreshCcw, Camera, RotateCcw, AlertTriangle, Loader2, RefreshCw, ChevronDown, ChevronRight, Trash2 } from 'lucide-react';
+import { fetchProxmoxProviders, fetchProxmoxVMs, fetchProxmoxVM, startVM, stopVM, rebootVM, createSnapshot, deleteProxmoxVM, deleteProxmoxLXC } from '../../../api/client';
 
 export default function ProxmoxVirtualMachines() {
   const [providers, setProviders] = useState([]);
@@ -16,6 +16,8 @@ export default function ProxmoxVirtualMachines() {
   const [confirmAction, setConfirmAction] = useState(null);
   const [snapName, setSnapName] = useState('');
   const [actionResult, setActionResult] = useState(null);
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
 
   const loadProviders = useCallback(async () => {
     setLoading(true);
@@ -111,6 +113,32 @@ export default function ProxmoxVirtualMachines() {
       setActionLoading(null);
     }
   }
+
+  async function executeDelete(vm) {
+    const expectedText = `delete ${vm.name || vm.vmid}`;
+    if (deleteConfirmText !== expectedText) return;
+    setActionLoading('delete');
+    setActionResult(null);
+    setDeleteConfirm(null);
+    setDeleteConfirmText('');
+    try {
+      let result;
+      if (vm.type === 'lxc') {
+        result = await deleteProxmoxLXC(selectedProvider, vm.vmid);
+      } else {
+        result = await deleteProxmoxVM(selectedProvider, vm.vmid);
+      }
+      setActionResult({ type: 'success', text: result.message || `${vm.type === 'lxc' ? 'LXC' : 'VM'} deletion submitted` });
+      setTimeout(() => loadVMs(selectedProvider), 3000);
+    } catch (e) {
+      setActionResult({ type: 'error', text: e.response?.data?.error?.message || e.message });
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  const storedRole = (() => { try { return localStorage.getItem('goneops-role') || 'operator'; } catch (e) { return 'operator'; } })();
+  const isAdmin = storedRole === 'admin';
 
   if (loading) {
     return (
@@ -260,6 +288,14 @@ export default function ProxmoxVirtualMachines() {
                                     >
                                       <RefreshCcw size={12} /> Reboot
                                     </button>
+                                    {isAdmin && (
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); setDeleteConfirm(key); setDeleteConfirmText(''); }}
+                                        className="px-2 py-1 border border-red-300 text-red-600 rounded-lg text-xs hover:bg-red-50 flex items-center gap-1"
+                                      >
+                                        <Trash2 size={12} /> Delete
+                                      </button>
+                                    )}
                                   </>
                                 )}
                               </span>
@@ -300,6 +336,43 @@ export default function ProxmoxVirtualMachines() {
                                 >
                                   Cancel
                                 </button>
+                              </div>
+                            )}
+
+                            {deleteConfirm === key && (
+                              <div className="px-8 py-3 bg-red-50/50 border-t border-red-200 flex flex-col gap-3">
+                                <div className="flex items-center gap-2">
+                                  <AlertTriangle size={16} className="text-red-500" />
+                                  <span className="text-sm font-semibold text-red-700">
+                                    Delete {vm.type === 'qemu' ? 'VM' : 'LXC'} {vm.name || vm.vmid}
+                                  </span>
+                                </div>
+                                <p className="text-xs text-red-600">
+                                  This permanently destroys the {vm.type === 'qemu' ? 'VM' : 'LXC'} and all disks. Type <strong>{`delete ${vm.name || vm.vmid}`}</strong> to confirm.
+                                </p>
+                                <div className="flex items-center gap-3">
+                                  <input
+                                    type="text"
+                                    value={deleteConfirmText}
+                                    onChange={(e) => setDeleteConfirmText(e.target.value)}
+                                    className="px-3 py-1.5 border border-red-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+                                    placeholder={`delete ${vm.name || vm.vmid}`}
+                                    autoFocus
+                                  />
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); executeDelete(vm); }}
+                                    disabled={actionLoading === 'delete' || deleteConfirmText !== `delete ${vm.name || vm.vmid}`}
+                                    className="px-3 py-1 bg-red-600 text-white rounded text-xs font-medium hover:bg-red-700 disabled:opacity-50"
+                                  >
+                                    {actionLoading === 'delete' ? <Loader2 size={12} className="animate-spin" /> : null} Yes, Delete
+                                  </button>
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); setDeleteConfirm(null); setDeleteConfirmText(''); }}
+                                    className="px-3 py-1 border border-slate-300 text-slate-600 rounded text-xs hover:bg-slate-50"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
                               </div>
                             )}
 
