@@ -63,18 +63,14 @@ export default function PlatformOverview() {
 
   const statCards = [
     { key: 'hosts', label: 'Hosts', value: stats.hosts || 0 },
-    { key: 'vms', label: 'VMs', value: 430 },
+    { key: 'vms', label: 'VMs', value: stats.vms || 0 },
     { key: 'containers', label: 'Containers', value: stats.containers || 0 },
     { key: 'applications', label: 'Applications', value: stats.applications || 0 },
     { key: 'providers', label: 'Providers', value: stats.connected_providers || 0 },
     { key: 'issues', label: 'Issues', value: stats.critical_certs || 0 },
   ];
 
-  const resources = [
-    { name: 'CPU Allocation', used: 420, total: 640, unit: 'Core', percent: 65.6 },
-    { name: 'Memory', used: 2.8, total: 4, unit: 'TB', percent: 70 },
-    { name: 'Storage', used: 65, total: 100, unit: 'TB', percent: 65 },
-  ];
+  const resources = stats.resources || [];
 
   return (
     <div>

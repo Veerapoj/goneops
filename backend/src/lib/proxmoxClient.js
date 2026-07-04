@@ -40,6 +40,17 @@ async function getNodes(client) {
   return (data && data.data) || [];
 }
 
+async function getNodeStatus(client, node) {
+  let instance;
+  if (typeof client.get === 'function') {
+    instance = client;
+  } else {
+    instance = createClient(client);
+  }
+  const { data } = await instance.get(`/nodes/${node}/status`);
+  return (data && data.data) || {};
+}
+
 async function getNodeVMs(client, node) {
   let instance;
   if (typeof client.get === 'function') {
@@ -266,6 +277,7 @@ module.exports = {
   createClient,
   testConnection,
   getNodes,
+  getNodeStatus,
   getNodeVMs,
   getNodeLXC,
   getVM,

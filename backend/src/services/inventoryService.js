@@ -1,30 +1,63 @@
 const { query } = require('../lib/db');
 
+async function getResourcesAggregate() {
+  const h = await query(`
+    SELECT
+      SUM(cpu_cores)::int AS total_cpu_cores,
+      ROUND(AVG(cpu_usage_pct)::numeric, 1) AS avg_cpu_pct,
+      SUM(memory_total_gb)::numeric AS total_memory_gb,
+      ROUND(AVG(memory_usage_pct)::numeric, 1) AS avg_mem_pct,
+      SUM(disk_total_gb)::numeric AS total_disk_gb,
+      ROUND(AVG(disk_usage_pct)::numeric, 1) AS avg_disk_pct
+    FROM hosts
+  `);
+  const row = h.rows[0] || {};
+  const totalCpu = row.total_cpu_cores || 0;
+  const totalMem = parseFloat(row.total_memory_gb || 0);
+  const totalDisk = parseFloat(row.total_disk_gb || 0);
+  const cpuPct = parseFloat(row.avg_cpu_pct || 0);
+  const memPct = parseFloat(row.avg_mem_pct || 0);
+  const diskPct = parseFloat(row.avg_disk_pct || 0);
+
+  const cpuUsed = totalCpu > 0 ? Math.round(totalCpu * cpuPct / 100) : 0;
+  const memUsed = totalMem > 0 ? Math.round(totalMem * memPct / 100 * 100) / 100 : 0;
+  const diskUsed = totalDisk > 0 ? Math.round(totalDisk * diskPct / 100 * 100) / 100 : 0;
+
+  return [
+    { name: 'CPU Allocation', used: cpuUsed, total: totalCpu, unit: 'Core', percent: Math.round(cpuPct * 10) / 10 },
+    { name: 'Memory', used: memUsed, total: totalMem, unit: 'GB', percent: Math.round(memPct * 10) / 10 },
+    { name: 'Storage', used: diskUsed, total: totalDisk, unit: 'GB', percent: Math.round(diskPct * 10) / 10 },
+  ];
+}
+
 async function getDashboardStats() {
   const hosts = await query('SELECT COUNT(*)::int AS count FROM hosts');
+  const vms = await query('SELECT COUNT(*)::int AS count FROM vms');
   const containers = await query('SELECT COUNT(*)::int AS count FROM containers');
   const applications = await query('SELECT COUNT(*)::int AS count FROM applications');
   const providers = await query('SELECT COUNT(*)::int AS count FROM providers');
   const connectedProviders = await query("SELECT COUNT(*)::int AS count FROM providers WHERE status = 'connected'");
   const criticalCerts = await query("SELECT COUNT(*)::int AS count FROM certificates WHERE status IN ('critical', 'expired')");
   const syncJobs = await query('SELECT COUNT(*)::int AS count FROM sync_jobs');
+  const resources = await getResourcesAggregate();
 
   return {
     hosts: hosts.rows[0]?.count || 0,
-    vms: 0,
+    vms: vms.rows[0]?.count || 0,
     containers: containers.rows[0]?.count || 0,
     applications: applications.rows[0]?.count || 0,
     providers: providers.rows[0]?.count || 0,
     connected_providers: connectedProviders.rows[0]?.count || 0,
     critical_certs: criticalCerts.rows[0]?.count || 0,
     sync_jobs: syncJobs.rows[0]?.count || 0,
+    resources,
   };
 }
 
 async function listProviders() {
   const result = await query(`
     SELECT p.*,
-      (SELECT COUNT(*)::int FROM hosts WHERE provider_id = p.id) AS hosts_count,
+      (SELECT COUNT(*)::int FROM hosts WHERE provider_id = p.id AND host_type = 'host') AS nodes_count,
       (SELECT COUNT(*)::int FROM containers WHERE provider_id = p.id) AS containers_count
     FROM providers p
     ORDER BY p.created_at DESC
@@ -195,16 +228,7 @@ async function getServiceMap() {
 }
 
 async function getCapacity() {
-  const hostsRes = await query(`
-    SELECT
-      SUM(cpu_cores)::int AS total_cpu_cores,
-      ROUND(AVG(cpu_usage_pct)::numeric, 1) AS avg_cpu_pct,
-      SUM(memory_total_gb)::numeric AS total_memory_gb,
-      ROUND(AVG(memory_usage_pct)::numeric, 1) AS avg_mem_pct,
-      SUM(disk_total_gb)::numeric AS total_disk_gb,
-      ROUND(AVG(disk_usage_pct)::numeric, 1) AS avg_disk_pct
-    FROM hosts
-  `);
+  const resources = await getResourcesAggregate();
 
   const containersRes = await query(`
     SELECT
@@ -220,31 +244,13 @@ async function getCapacity() {
     FROM vms
   `);
 
-  const h = hostsRes.rows[0] || {};
-  const totalCpu = (h.total_cpu_cores || 0);
-  const totalMem = parseFloat(h.total_memory_gb || 0);
-  const cpuUsedPct = parseFloat(h.avg_cpu_pct || 0);
-  const memUsedPct = parseFloat(h.avg_mem_pct || 0);
-
-  const cpuUsed = totalCpu > 0 ? Math.round(totalCpu * cpuUsedPct / 100) : 0;
-  const memUsed = totalMem > 0 ? Math.round(totalMem * memUsedPct / 100 * 100) / 100 : 0;
-
-  const capacityData = [
-    {
-      resource: 'CPU',
-      total: totalCpu,
-      allocated: totalCpu,
-      used: cpuUsed,
-      unit: 'Core',
-    },
-    {
-      resource: 'Memory',
-      total: totalMem,
-      allocated: totalMem,
-      used: memUsed,
-      unit: 'GB',
-    },
-  ];
+  const capacityData = resources.map((r) => ({
+    resource: r.name.replace(' Allocation', ''),
+    total: r.total,
+    allocated: r.total,
+    used: r.used,
+    unit: r.unit,
+  }));
 
   const idleResources = [];
   for (const vm of (await query(`SELECT name, cpu_cores, memory_gb, status FROM vms WHERE status = 'stopped' ORDER BY name LIMIT 3`)).rows) {

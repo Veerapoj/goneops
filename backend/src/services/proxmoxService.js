@@ -214,12 +214,23 @@ async function syncInventory(id) {
   let foundCount = 0;
 
   for (const node of nodes) {
+    const cpuCores = parseInt(node.maxcpu) || 0;
+    const memoryGb = node.maxmem ? Math.round(parseInt(node.maxmem) / 1073741824 * 100) / 100 : 0;
+    const diskGb = node.maxdisk ? Math.round(parseInt(node.maxdisk) / 1073741824 * 100) / 100 : 0;
+    const cpuPct = node.cpu ? Math.round(parseFloat(node.cpu) * 10000) / 100 : 0;
+    const memPct = node.maxmem && node.mem ? Math.round(parseInt(node.mem) / parseInt(node.maxmem) * 10000) / 100 : 0;
+    const diskPct = node.maxdisk && node.disk ? Math.round(parseInt(node.disk) / parseInt(node.maxdisk) * 10000) / 100 : 0;
+
     await query(
-      `INSERT INTO hosts (provider_id, hostname, host_type, ip_address, status)
-       VALUES ($1, $2, 'host', $3, 'running')
+      `INSERT INTO hosts (provider_id, hostname, host_type, ip_address, status, cpu_cores, cpu_usage_pct, memory_total_gb, memory_usage_pct, disk_total_gb, disk_usage_pct)
+       VALUES ($1, $2, 'host', $3, 'running', $4, $5, $6, $7, $8, $9)
        ON CONFLICT (hostname, provider_id) DO UPDATE SET
-         host_type = 'host', status = 'running', updated_at = CURRENT_TIMESTAMP`,
-      [bridgeProviderId, node.node, node.ip || null]
+         host_type = 'host', status = 'running',
+         cpu_cores = $4, cpu_usage_pct = $5,
+         memory_total_gb = $6, memory_usage_pct = $7,
+         disk_total_gb = $8, disk_usage_pct = $9,
+         updated_at = CURRENT_TIMESTAMP`,
+      [bridgeProviderId, node.node, node.ip || null, cpuCores, cpuPct, memoryGb, memPct, diskGb, diskPct]
     );
     foundCount++;
   }
@@ -247,7 +258,7 @@ async function syncInventory(id) {
       await query(
         `INSERT INTO containers (name, container_id, provider_id, status, cpu_usage_pct, memory_usage_mb)
          VALUES ($1, $2, $3, $4, 0, 0)
-         ON CONFLICT DO NOTHING`,
+         ON CONFLICT (provider_id, container_id) DO UPDATE SET status = $4, updated_at = CURRENT_TIMESTAMP`,
         [lxc.name || `ct-${lxc.vmid}`, String(lxc.vmid), bridgeProviderId, status]
       );
       foundCount++;

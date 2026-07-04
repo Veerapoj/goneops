@@ -291,6 +291,12 @@ CREATE INDEX IF NOT EXISTS idx_containers_host ON containers(host_id);
 CREATE INDEX IF NOT EXISTS idx_containers_provider ON containers(provider_id);
 CREATE INDEX IF NOT EXISTS idx_containers_status ON containers(status);
 
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'unique_container_provider') THEN
+    ALTER TABLE containers ADD CONSTRAINT unique_container_provider UNIQUE (provider_id, container_id);
+  END IF;
+END $$;
+
 -- 13. Applications Table
 CREATE TABLE IF NOT EXISTS applications (
     id SERIAL PRIMARY KEY,
