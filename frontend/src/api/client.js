@@ -6,6 +6,16 @@ const client = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
+client.interceptors.request.use((config) => {
+  try {
+    const role = localStorage.getItem('goneops-role');
+    if (role) {
+      config.headers['X-GoneOps-Role'] = role;
+    }
+  } catch (e) { /* ignore */ }
+  return config;
+});
+
 export async function fetchProjects() {
   const { data } = await client.get('/projects');
   return data;

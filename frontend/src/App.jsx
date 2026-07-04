@@ -1,5 +1,6 @@
 import { Routes, Route } from 'react-router-dom';
 import { ProjectProvider } from './context/ProjectContext';
+import { RoleProvider } from './context/RoleContext';
 import Layout from './layout/Layout';
 import PlatformLayout from './layout/PlatformLayout';
 import Overview from './pages/Overview';
@@ -35,6 +36,7 @@ import ProxmoxTasks from './pages/platform/proxmox/Tasks';
 export default function App() {
   return (
     <ProjectProvider>
+      <RoleProvider>
       <Routes>
         {/* DX User Layout — Original GoneOps */}
         <Route element={<Layout />}>
@@ -73,6 +75,7 @@ export default function App() {
           <Route path="platform/proxmox/tasks" element={<ProxmoxTasks />} />
         </Route>
       </Routes>
+      </RoleProvider>
     </ProjectProvider>
   );
 }

@@ -1,4 +1,6 @@
 import { NavLink, Outlet } from 'react-router-dom';
+import { useRole } from '../context/RoleContext';
+import { useState } from 'react';
 import {
   LayoutDashboard, Plug, RefreshCw, Server, Container, Boxes,
   GitGraph, HardDrive, Cpu, Shield, History, Settings, Globe,
@@ -80,6 +82,8 @@ function PlatformNavItem({ to, label, icon: Icon, exact }) {
 }
 
 export default function PlatformLayout() {
+  const { role, setRole, VALID_ROLES } = useRole();
+
   return (
     <div className="flex h-screen bg-gray-100">
       {/* Platform Sidebar */}
@@ -130,7 +134,22 @@ export default function PlatformLayout() {
       <div className="flex-1 flex flex-col min-w-0">
         {/* Top Nav */}
         <header className="h-14 bg-white border-b border-gray-200 flex items-center justify-between px-6 shrink-0">
-          <div className="text-base font-semibold text-gray-800">GoneOps Platform Admin</div>
+          <div className="flex items-center gap-4">
+            <div className="text-base font-semibold text-gray-800">GoneOps Platform Admin</div>
+            <select
+              value={role}
+              onChange={(e) => setRole(e.target.value)}
+              className={`text-xs rounded-lg border px-2.5 py-1.5 font-medium cursor-pointer outline-none ${
+                role === 'admin' ? 'bg-red-50 border-red-200 text-red-700' :
+                role === 'operator' ? 'bg-amber-50 border-amber-200 text-amber-700' :
+                'bg-blue-50 border-blue-200 text-blue-700'
+              }`}
+            >
+              {VALID_ROLES.map((r) => (
+                <option key={r} value={r}>{r}</option>
+              ))}
+            </select>
+          </div>
           <div className="flex items-center gap-4">
             <span className="text-sm text-gray-500 cursor-pointer hover:text-gray-700">Documentation</span>
             <NavLink to="/" className="text-sm text-indigo-600 hover:underline flex items-center gap-1">
