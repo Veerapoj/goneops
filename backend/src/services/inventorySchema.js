@@ -143,6 +143,40 @@ CREATE TABLE IF NOT EXISTS sync_jobs (
 CREATE INDEX IF NOT EXISTS idx_sync_jobs_provider ON sync_jobs(provider_id);
 CREATE INDEX IF NOT EXISTS idx_sync_jobs_status ON sync_jobs(status);
 
+CREATE TABLE IF NOT EXISTS proxmox_providers (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    host VARCHAR(255) NOT NULL,
+    port INTEGER DEFAULT 8006,
+    token_user VARCHAR(255) NOT NULL,
+    token_id VARCHAR(255) NOT NULL,
+    token_secret_encrypted TEXT,
+    verify_ssl BOOLEAN DEFAULT false,
+    status VARCHAR(50) DEFAULT 'disconnected' CHECK (status IN ('connected', 'disconnected', 'error')),
+    last_tested_at TIMESTAMP WITH TIME ZONE,
+    last_synced_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT unique_proxmox_host_token UNIQUE (host, token_id)
+);
+CREATE INDEX IF NOT EXISTS idx_proxmox_providers_status ON proxmox_providers(status);
+
+CREATE TABLE IF NOT EXISTS audit_logs (
+    id SERIAL PRIMARY KEY,
+    actor VARCHAR(255),
+    action VARCHAR(100) NOT NULL,
+    resource_type VARCHAR(100),
+    resource_id INTEGER,
+    provider_id INTEGER REFERENCES proxmox_providers(id) ON DELETE SET NULL,
+    result VARCHAR(50) NOT NULL CHECK (result IN ('success', 'failure')),
+    message TEXT,
+    metadata JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_provider ON audit_logs(provider_id);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_created ON audit_logs(created_at);
+
 INSERT INTO providers (name, type, status, config, nodes_count) VALUES
     ('Proxmox Cluster A', 'proxmox', 'connected', '{"endpoint":"https://proxmox.example.com:8006","nodes":5}'::jsonb, 5),
     ('Kubernetes Prod', 'kubernetes', 'connected', '{"endpoint":"https://k8s-api.example.com:6443","nodes":3}'::jsonb, 3),

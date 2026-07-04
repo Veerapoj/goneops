@@ -24,6 +24,10 @@ import ServiceMap from './pages/platform/ServiceMap';
 import Operations from './pages/platform/Operations';
 import Capacity from './pages/platform/Capacity';
 import Governance from './pages/platform/Governance';
+import ProxmoxProviders from './pages/platform/proxmox/Providers';
+import ProxmoxNodes from './pages/platform/proxmox/Nodes';
+import ProxmoxVirtualMachines from './pages/platform/proxmox/VirtualMachines';
+import ProxmoxAuditLogs from './pages/platform/proxmox/AuditLogs';
 
 export default function App() {
   return (
@@ -57,6 +61,10 @@ export default function App() {
           <Route path="platform/operations" element={<Operations />} />
           <Route path="platform/capacity" element={<Capacity />} />
           <Route path="platform/governance" element={<Governance />} />
+          <Route path="platform/proxmox/providers" element={<ProxmoxProviders />} />
+          <Route path="platform/proxmox/nodes" element={<ProxmoxNodes />} />
+          <Route path="platform/proxmox/vms" element={<ProxmoxVirtualMachines />} />
+          <Route path="platform/proxmox/audit-logs" element={<ProxmoxAuditLogs />} />
         </Route>
       </Routes>
     </ProjectProvider>

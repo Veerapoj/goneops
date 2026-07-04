@@ -40,6 +40,15 @@ const platformNavGroups = [
     ],
   },
   {
+    label: 'PROXMOX',
+    items: [
+      { to: '/platform/proxmox/providers', label: 'Providers', icon: Plug },
+      { to: '/platform/proxmox/nodes', label: 'Nodes', icon: Server },
+      { to: '/platform/proxmox/vms', label: 'Virtual Machines', icon: Cpu },
+      { to: '/platform/proxmox/audit-logs', label: 'Audit Logs', icon: History },
+    ],
+  },
+  {
     label: 'GOVERNANCE',
     items: [
       { to: '/platform/governance', label: 'Audit Logs', icon: Shield },

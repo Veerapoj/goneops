@@ -166,4 +166,44 @@ export async function fetchSyncJobs() {
   return data;
 }
 
+export async function fetchProxmoxProviders() {
+  const { data } = await client.get('/proxmox/providers');
+  return data;
+}
+
+export async function createProxmoxProvider(provider) {
+  const { data } = await client.post('/proxmox/providers', provider);
+  return data;
+}
+
+export async function testProxmoxProvider(id) {
+  const { data } = await client.post(`/proxmox/providers/${id}/test`);
+  return data;
+}
+
+export async function fetchProxmoxNodes(id) {
+  const { data } = await client.get(`/proxmox/providers/${id}/nodes`);
+  return data;
+}
+
+export async function fetchProxmoxVMs(id) {
+  const { data } = await client.get(`/proxmox/providers/${id}/vms`);
+  return data;
+}
+
+export async function fetchProxmoxVM(providerId, vmid) {
+  const { data } = await client.get(`/proxmox/vms/${vmid}`, { params: { provider_id: providerId } });
+  return data;
+}
+
+export async function syncProxmoxInventory(providerId) {
+  const { data } = await client.post('/proxmox/sync-inventory', { provider_id: providerId });
+  return data;
+}
+
+export async function fetchProxmoxAuditLogs(limit) {
+  const { data } = await client.get('/proxmox/audit-logs', { params: { limit } });
+  return data;
+}
+
 export default client;
