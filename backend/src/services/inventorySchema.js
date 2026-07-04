@@ -177,6 +177,40 @@ CREATE INDEX IF NOT EXISTS idx_audit_logs_provider ON audit_logs(provider_id);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_created ON audit_logs(created_at);
 
+CREATE TABLE IF NOT EXISTS proxmox_tasks (
+    id SERIAL PRIMARY KEY,
+    upid TEXT NOT NULL UNIQUE,
+    provider_id INTEGER REFERENCES proxmox_providers(id) ON DELETE SET NULL,
+    node VARCHAR(255),
+    vmid VARCHAR(100),
+    type VARCHAR(20),
+    action VARCHAR(100) NOT NULL,
+    status VARCHAR(50) DEFAULT 'running',
+    exit_status TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    last_polled_at TIMESTAMP WITH TIME ZONE
+);
+CREATE INDEX IF NOT EXISTS idx_proxmox_tasks_provider ON proxmox_tasks(provider_id);
+CREATE INDEX IF NOT EXISTS idx_proxmox_tasks_status ON proxmox_tasks(status);
+
+CREATE TABLE IF NOT EXISTS approval_requests (
+    id SERIAL PRIMARY KEY,
+    requested_by VARCHAR(255),
+    action VARCHAR(100) NOT NULL,
+    resource_type VARCHAR(100),
+    resource_id VARCHAR(100),
+    provider_id INTEGER REFERENCES proxmox_providers(id) ON DELETE SET NULL,
+    payload JSONB DEFAULT '{}'::jsonb,
+    status VARCHAR(50) DEFAULT 'pending' CHECK (status IN ('pending','approved','rejected','executed','failed')),
+    approved_by VARCHAR(255),
+    decided_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_approval_requests_status ON approval_requests(status);
+CREATE INDEX IF NOT EXISTS idx_approval_requests_provider ON approval_requests(provider_id);
+
+ALTER TABLE proxmox_providers ADD COLUMN IF NOT EXISTS quota_max_vms INTEGER;
+
 INSERT INTO providers (name, type, status, config, nodes_count) VALUES
     ('Proxmox Cluster A', 'proxmox', 'connected', '{"endpoint":"https://proxmox.example.com:8006","nodes":5}'::jsonb, 5),
     ('Kubernetes Prod', 'kubernetes', 'connected', '{"endpoint":"https://k8s-api.example.com:6443","nodes":3}'::jsonb, 3),

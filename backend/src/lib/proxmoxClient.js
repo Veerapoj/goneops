@@ -96,6 +96,115 @@ async function getLXC(client, node, vmid) {
   };
 }
 
+async function startVM(client, node, vmid, type) {
+  let instance;
+  if (typeof client.get === 'function') {
+    instance = client;
+  } else {
+    instance = createClient(client);
+  }
+  const sub = type === 'lxc' ? 'lxc' : 'qemu';
+  const { data } = await instance.post(`/nodes/${node}/${sub}/${vmid}/status/start`);
+  return data;
+}
+
+async function stopVM(client, node, vmid, type) {
+  let instance;
+  if (typeof client.get === 'function') {
+    instance = client;
+  } else {
+    instance = createClient(client);
+  }
+  const sub = type === 'lxc' ? 'lxc' : 'qemu';
+  const { data } = await instance.post(`/nodes/${node}/${sub}/${vmid}/status/stop`);
+  return data;
+}
+
+async function rebootVM(client, node, vmid, type) {
+  let instance;
+  if (typeof client.get === 'function') {
+    instance = client;
+  } else {
+    instance = createClient(client);
+  }
+  const sub = type === 'lxc' ? 'lxc' : 'qemu';
+  const { data } = await instance.post(`/nodes/${node}/${sub}/${vmid}/status/reboot`);
+  return data;
+}
+
+async function getTaskStatus(client, node, upid) {
+  let instance;
+  if (typeof client.get === 'function') {
+    instance = client;
+  } else {
+    instance = createClient(client);
+  }
+  const { data } = await instance.get(`/nodes/${node}/tasks/${encodeURIComponent(upid)}/status`);
+  return (data && data.data) || {};
+}
+
+async function getNextId(client) {
+  let instance;
+  if (typeof client.get === 'function') {
+    instance = client;
+  } else {
+    instance = createClient(client);
+  }
+  const { data } = await instance.get('/cluster/nextid');
+  return (data && data.data) || null;
+}
+
+async function cloneVM(client, node, vmid, { newid, name, target }) {
+  let instance;
+  if (typeof client.get === 'function') {
+    instance = client;
+  } else {
+    instance = createClient(client);
+  }
+  const body = { newid, name };
+  if (target) body.target = target;
+  const { data } = await instance.post(`/nodes/${node}/qemu/${vmid}/clone`, body);
+  return data;
+}
+
+async function createSnapshot(client, node, vmid, type, snapname, description) {
+  let instance;
+  if (typeof client.get === 'function') {
+    instance = client;
+  } else {
+    instance = createClient(client);
+  }
+  const sub = type === 'lxc' ? 'lxc' : 'qemu';
+  const body = { snapname };
+  if (description) body.description = description;
+  const { data } = await instance.post(`/nodes/${node}/${sub}/${vmid}/snapshot`, body);
+  return data;
+}
+
+async function listSnapshots(client, node, vmid, type) {
+  let instance;
+  if (typeof client.get === 'function') {
+    instance = client;
+  } else {
+    instance = createClient(client);
+  }
+  const sub = type === 'lxc' ? 'lxc' : 'qemu';
+  const { data } = await instance.get(`/nodes/${node}/${sub}/${vmid}/snapshot`);
+  return (data && data.data) || [];
+}
+
+async function rollbackSnapshot(client, node, vmid, type, snapname) {
+  let instance;
+  if (typeof client.get === 'function') {
+    instance = client;
+  } else {
+    instance = createClient(client);
+  }
+  const sub = type === 'lxc' ? 'lxc' : 'qemu';
+  const { data } = await instance.post(`/nodes/${node}/${sub}/${vmid}/snapshot/${encodeURIComponent(snapname)}/rollback`);
+  return data;
+}
+
 module.exports = {
   createClient,
   testConnection,
@@ -104,4 +213,13 @@ module.exports = {
   getNodeLXC,
   getVM,
   getLXC,
+  startVM,
+  stopVM,
+  rebootVM,
+  getTaskStatus,
+  getNextId,
+  cloneVM,
+  createSnapshot,
+  listSnapshots,
+  rollbackSnapshot,
 };

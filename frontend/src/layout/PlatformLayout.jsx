@@ -2,6 +2,7 @@ import { NavLink, Outlet } from 'react-router-dom';
 import {
   LayoutDashboard, Plug, RefreshCw, Server, Container, Boxes,
   GitGraph, HardDrive, Cpu, Shield, History, Settings, Globe,
+  Copy, ListChecks,
 } from 'lucide-react';
 
 const platformNavGroups = [
@@ -45,6 +46,9 @@ const platformNavGroups = [
       { to: '/platform/proxmox/providers', label: 'Providers', icon: Plug },
       { to: '/platform/proxmox/nodes', label: 'Nodes', icon: Server },
       { to: '/platform/proxmox/vms', label: 'Virtual Machines', icon: Cpu },
+      { to: '/platform/proxmox/templates', label: 'Templates', icon: Copy },
+      { to: '/platform/proxmox/snapshots', label: 'Snapshots', icon: GitGraph },
+      { to: '/platform/proxmox/tasks', label: 'Tasks', icon: ListChecks },
       { to: '/platform/proxmox/audit-logs', label: 'Audit Logs', icon: History },
     ],
   },

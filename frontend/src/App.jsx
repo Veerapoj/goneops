@@ -28,6 +28,9 @@ import ProxmoxProviders from './pages/platform/proxmox/Providers';
 import ProxmoxNodes from './pages/platform/proxmox/Nodes';
 import ProxmoxVirtualMachines from './pages/platform/proxmox/VirtualMachines';
 import ProxmoxAuditLogs from './pages/platform/proxmox/AuditLogs';
+import ProxmoxTemplates from './pages/platform/proxmox/Templates';
+import ProxmoxSnapshots from './pages/platform/proxmox/Snapshots';
+import ProxmoxTasks from './pages/platform/proxmox/Tasks';
 
 export default function App() {
   return (
@@ -65,6 +68,9 @@ export default function App() {
           <Route path="platform/proxmox/nodes" element={<ProxmoxNodes />} />
           <Route path="platform/proxmox/vms" element={<ProxmoxVirtualMachines />} />
           <Route path="platform/proxmox/audit-logs" element={<ProxmoxAuditLogs />} />
+          <Route path="platform/proxmox/templates" element={<ProxmoxTemplates />} />
+          <Route path="platform/proxmox/snapshots" element={<ProxmoxSnapshots />} />
+          <Route path="platform/proxmox/tasks" element={<ProxmoxTasks />} />
         </Route>
       </Routes>
     </ProjectProvider>

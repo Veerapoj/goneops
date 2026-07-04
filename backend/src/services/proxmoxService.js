@@ -295,6 +295,438 @@ async function listAuditLogs(limit = 50) {
   return res.rows;
 }
 
+async function locateVM(client, vmid) {
+  const nodes = await proxmoxClient.getNodes(client);
+  for (const node of nodes) {
+    try {
+      await proxmoxClient.getVM(client, node.node, vmid);
+      return { node: node.node, type: 'qemu' };
+    } catch (e) {
+      try {
+        await proxmoxClient.getLXC(client, node.node, vmid);
+        return { node: node.node, type: 'lxc' };
+      } catch (e2) {
+        continue;
+      }
+    }
+  }
+  throw Object.assign(new Error(`VM ${vmid} not found on any node`), { code: 'not_found', status: 404 });
+}
+
+async function insertTask({ upid, providerId, node, vmid, type, action }) {
+  await query(
+    `INSERT INTO proxmox_tasks (upid, provider_id, node, vmid, type, action)
+     VALUES ($1,$2,$3,$4,$5,$6)
+     ON CONFLICT (upid) DO UPDATE SET status = 'running', last_polled_at = CURRENT_TIMESTAMP`,
+    [upid, providerId, node, String(vmid), type, action]
+  );
+}
+
+async function powerAction(providerId, vmid, action) {
+  const provider = await getProviderWithSecret(providerId);
+  if (!provider) throw Object.assign(new Error('Provider not found'), { code: 'not_found', status: 404 });
+
+  const client = buildClientFromProvider(provider);
+  const { node, type } = await locateVM(client, vmid);
+
+  let res;
+  try {
+    if (action === 'start') res = await proxmoxClient.startVM(client, node, vmid, type);
+    else if (action === 'stop') res = await proxmoxClient.stopVM(client, node, vmid, type);
+    else if (action === 'reboot') res = await proxmoxClient.rebootVM(client, node, vmid, type);
+
+    const upid = (res && res.data) || null;
+    if (upid) {
+      await insertTask({ upid, providerId: provider.id, node, vmid, type, action: `vm_${action}` });
+    }
+
+    await writeAuditLog({
+      actor: 'system',
+      action: `vm_${action}`,
+      resource_type: 'vm',
+      resource_id: vmid,
+      provider_id: provider.id,
+      result: 'success',
+      message: `VM ${vmid} ${action} on node ${node}`,
+      metadata: { upid, node, type },
+    });
+
+    return { upid, node, type, message: `VM ${vmid} ${action} submitted` };
+  } catch (e) {
+    await writeAuditLog({
+      actor: 'system',
+      action: `vm_${action}`,
+      resource_type: 'vm',
+      resource_id: vmid,
+      provider_id: provider.id,
+      result: 'failure',
+      message: `VM ${vmid} ${action} failed: ${e.response ? `HTTP ${e.response.status}` : e.code || e.message}`,
+      metadata: { node, type },
+    });
+    throw e;
+  }
+}
+
+async function getTaskStatus(providerId, upid) {
+  const provider = await getProviderWithSecret(providerId);
+  if (!provider) throw Object.assign(new Error('Provider not found'), { code: 'not_found', status: 404 });
+
+  const match = upid.match(/^UPID:(.+?):/);
+  const node = match ? match[1] : 'localhost';
+
+  const client = buildClientFromProvider(provider);
+  const taskData = await proxmoxClient.getTaskStatus(client, node, upid);
+
+  await query(
+    `UPDATE proxmox_tasks SET status = $1, exit_status = $2, last_polled_at = CURRENT_TIMESTAMP
+     WHERE upid = $3`,
+    [taskData.status || 'unknown', taskData.exitstatus !== undefined ? String(taskData.exitstatus) : null, upid]
+  );
+
+  return taskData;
+}
+
+async function listTemplates(providerId) {
+  const provider = await getProviderWithSecret(providerId);
+  if (!provider) throw Object.assign(new Error('Provider not found'), { code: 'not_found', status: 404 });
+
+  const client = buildClientFromProvider(provider);
+  const nodes = await proxmoxClient.getNodes(client);
+  const templates = [];
+
+  for (const node of nodes) {
+    const qemuVMs = await proxmoxClient.getNodeVMs(client, node.node).catch(() => []);
+    for (const vm of qemuVMs) {
+      if (vm.template === 1) {
+        templates.push({ ...vm, type: 'qemu', node: node.node, provider_id: provider.id, provider_name: provider.name });
+      }
+    }
+  }
+
+  return templates;
+}
+
+async function cloneTemplate(providerId, templateVmid, { name, targetNode }, actor) {
+  const provider = await getProviderWithSecret(providerId);
+  if (!provider) throw Object.assign(new Error('Provider not found'), { code: 'not_found', status: 404 });
+
+  if (provider.quota_max_vms !== null && provider.quota_max_vms !== undefined) {
+    const countRes = await query(
+      `SELECT DISTINCT vmid FROM proxmox_tasks WHERE provider_id = $1 AND action = 'template_clone' AND status = 'OK'`,
+      [provider.id]
+    );
+    const currentCount = countRes.rows.length;
+
+    if (currentCount >= provider.quota_max_vms) {
+      await writeAuditLog({
+        actor: actor || 'system',
+        action: 'template_clone',
+        resource_type: 'template',
+        resource_id: templateVmid,
+        provider_id: provider.id,
+        result: 'failure',
+        message: `Clone rejected: quota exceeded (${currentCount}/${provider.quota_max_vms})`,
+      });
+      throw Object.assign(new Error(`Quota exceeded: max ${provider.quota_max_vms} VMs per provider`), { code: 'quota_exceeded', status: 422 });
+    }
+  }
+
+  const client = buildClientFromProvider(provider);
+  const nodes = await proxmoxClient.getNodes(client);
+
+  let sourceNode = targetNode;
+  let foundTemplate = false;
+  for (const node of nodes) {
+    try {
+      const qemuVMs = await proxmoxClient.getNodeVMs(client, node.node).catch(() => []);
+      const found = qemuVMs.find((vm) => String(vm.vmid) === String(templateVmid) && vm.template === 1);
+      if (found) {
+        sourceNode = node.node;
+        foundTemplate = true;
+        break;
+      }
+    } catch (e) {
+      continue;
+    }
+  }
+
+  if (!foundTemplate) {
+    throw Object.assign(new Error(`Template ${templateVmid} not found`), { code: 'not_found', status: 404 });
+  }
+
+  const nextIdData = await proxmoxClient.getNextId(client);
+  const newid = (nextIdData && nextIdData.nextid) || nextIdData;
+
+  if (!newid) {
+    throw Object.assign(new Error('Could not obtain next VM ID from cluster'), { code: 'proxmox_error', status: 500 });
+  }
+
+  let res;
+  try {
+    res = await proxmoxClient.cloneVM(client, sourceNode, templateVmid, { newid, name, target: targetNode || undefined });
+    const upid = (res && res.data) || null;
+
+    if (upid) {
+      await insertTask({ upid, providerId: provider.id, node: sourceNode, vmid: newid, type: 'qemu', action: 'template_clone' });
+    }
+
+    await writeAuditLog({
+      actor: actor || 'system',
+      action: 'template_clone',
+      resource_type: 'template',
+      resource_id: templateVmid,
+      provider_id: provider.id,
+      result: 'success',
+      message: `Template ${templateVmid} cloned to VM ${newid} (${name}) on node ${targetNode || sourceNode}`,
+      metadata: { upid, newid, name, sourceNode, targetNode },
+    });
+
+    return { upid, newid, name, node: targetNode || sourceNode, message: `Clone submitted, new VM ID: ${newid}` };
+  } catch (e) {
+    await writeAuditLog({
+      actor: actor || 'system',
+      action: 'template_clone',
+      resource_type: 'template',
+      resource_id: templateVmid,
+      provider_id: provider.id,
+      result: 'failure',
+      message: `Template ${templateVmid} clone failed: ${e.response ? `HTTP ${e.response.status}` : e.code || e.message}`,
+    });
+    throw e;
+  }
+}
+
+async function createSnapshotAction(providerId, vmid, { snapname, description }, actor) {
+  const provider = await getProviderWithSecret(providerId);
+  if (!provider) throw Object.assign(new Error('Provider not found'), { code: 'not_found', status: 404 });
+
+  const client = buildClientFromProvider(provider);
+  const { node, type } = await locateVM(client, vmid);
+
+  let res;
+  try {
+    res = await proxmoxClient.createSnapshot(client, node, vmid, type, snapname, description);
+    const upid = (res && res.data) || null;
+
+    if (upid) {
+      await insertTask({ upid, providerId: provider.id, node, vmid, type, action: 'snapshot_create' });
+    }
+
+    await writeAuditLog({
+      actor: actor || 'system',
+      action: 'snapshot_create',
+      resource_type: 'vm',
+      resource_id: vmid,
+      provider_id: provider.id,
+      result: 'success',
+      message: `Snapshot ${snapname} created for VM ${vmid}`,
+      metadata: { upid, snapname, node, type },
+    });
+
+    return { upid, snapname, node, type, message: `Snapshot ${snapname} creation submitted` };
+  } catch (e) {
+    await writeAuditLog({
+      actor: actor || 'system',
+      action: 'snapshot_create',
+      resource_type: 'vm',
+      resource_id: vmid,
+      provider_id: provider.id,
+      result: 'failure',
+      message: `Snapshot ${snapname} creation failed: ${e.response ? `HTTP ${e.response.status}` : e.code || e.message}`,
+    });
+    throw e;
+  }
+}
+
+async function listSnapshotsAction(providerId, vmid) {
+  const provider = await getProviderWithSecret(providerId);
+  if (!provider) throw Object.assign(new Error('Provider not found'), { code: 'not_found', status: 404 });
+
+  const client = buildClientFromProvider(provider);
+  const { node, type } = await locateVM(client, vmid);
+  return await proxmoxClient.listSnapshots(client, node, vmid, type);
+}
+
+async function rollbackSnapshotAction(providerId, vmid, snapname, actor) {
+  const provider = await getProviderWithSecret(providerId);
+  if (!provider) throw Object.assign(new Error('Provider not found'), { code: 'not_found', status: 404 });
+
+  const client = buildClientFromProvider(provider);
+  const { node, type } = await locateVM(client, vmid);
+
+  let res;
+  try {
+    res = await proxmoxClient.rollbackSnapshot(client, node, vmid, type, snapname);
+    const upid = (res && res.data) || null;
+
+    if (upid) {
+      await insertTask({ upid, providerId: provider.id, node, vmid, type, action: 'snapshot_rollback' });
+    }
+
+    await writeAuditLog({
+      actor: actor || 'system',
+      action: 'snapshot_rollback',
+      resource_type: 'vm',
+      resource_id: vmid,
+      provider_id: provider.id,
+      result: 'success',
+      message: `Rollback to snapshot ${snapname} for VM ${vmid} submitted`,
+      metadata: { upid, snapname, node, type },
+    });
+
+    return { upid, snapname, node, type, message: `Rollback to ${snapname} submitted` };
+  } catch (e) {
+    await writeAuditLog({
+      actor: actor || 'system',
+      action: 'snapshot_rollback',
+      resource_type: 'vm',
+      resource_id: vmid,
+      provider_id: provider.id,
+      result: 'failure',
+      message: `Rollback to ${snapname} failed: ${e.response ? `HTTP ${e.response.status}` : e.code || e.message}`,
+    });
+    throw e;
+  }
+}
+
+const ROLE_ORDER = { viewer: 0, operator: 1, admin: 2 };
+const VALID_ROLES = Object.keys(ROLE_ORDER);
+
+function getRole(req) {
+  const role = (req.headers['x-goneops-role'] || '').toLowerCase();
+  return VALID_ROLES.includes(role) ? role : 'viewer';
+}
+
+function getActor(req) {
+  return req.headers['x-goneops-actor'] || getRole(req);
+}
+
+function requireRole(minRole) {
+  return (req, res, next) => {
+    const role = getRole(req);
+    const minRank = ROLE_ORDER[minRole] || 0;
+    const currentRank = ROLE_ORDER[role] || 0;
+    if (currentRank < minRank) {
+      const err = new Error(`Role '${role}' is not authorized for this action (requires ${minRole})`);
+      err.status = 403;
+      err.code = 'forbidden';
+      return next(err);
+    }
+    req.goneopsRole = role;
+    req.goneopsActor = getActor(req);
+    next();
+  };
+}
+
+async function createApprovalRequest({ requestedBy, action, resourceType, resourceId, providerId, payload }) {
+  const res = await query(
+    `INSERT INTO approval_requests (requested_by, action, resource_type, resource_id, provider_id, payload)
+     VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, status, created_at`,
+    [requestedBy || 'system', action, resourceType, String(resourceId), providerId, JSON.stringify(payload)]
+  );
+  const approval = res.rows[0];
+
+  await writeAuditLog({
+    actor: requestedBy || 'system',
+    action: `${action.replace(/^template_clone$/, 'clone_requested').replace(/^snapshot_rollback$/, 'rollback_requested')}`,
+    resource_type: resourceType,
+    resource_id: resourceId,
+    provider_id: providerId,
+    result: 'success',
+    message: `Approval requested for ${action} on ${resourceType} ${resourceId}`,
+    metadata: { approval_id: approval.id, payload },
+  });
+
+  return approval;
+}
+
+async function listApprovalRequests() {
+  const res = await query(
+    `SELECT * FROM approval_requests ORDER BY created_at DESC`
+  );
+  return res.rows;
+}
+
+async function approveRequest(approvalId, approvedBy) {
+  const reqRes = await query(`SELECT * FROM approval_requests WHERE id = $1`, [approvalId]);
+  if (reqRes.rows.length === 0) {
+    throw Object.assign(new Error('Approval request not found'), { code: 'not_found', status: 404 });
+  }
+  const ar = reqRes.rows[0];
+  if (ar.status !== 'pending') {
+    throw Object.assign(new Error(`Approval request is already ${ar.status}`), { code: 'invalid_state', status: 409 });
+  }
+
+  await query(
+    `UPDATE approval_requests SET status = 'approved', approved_by = $1, decided_at = CURRENT_TIMESTAMP WHERE id = $2`,
+    [approvedBy || 'system', approvalId]
+  );
+
+  let result;
+  try {
+    if (ar.action === 'template_clone') {
+      const p = ar.payload || {};
+      result = await cloneTemplate(ar.provider_id, ar.resource_id, { name: p.name, targetNode: p.target_node }, approvedBy);
+    } else if (ar.action === 'snapshot_rollback') {
+      const p = ar.payload || {};
+      result = await rollbackSnapshotAction(ar.provider_id, ar.resource_id, p.snapname, approvedBy);
+    }
+
+    await query(`UPDATE approval_requests SET status = 'executed' WHERE id = $1`, [approvalId]);
+
+    await writeAuditLog({
+      actor: approvedBy || 'system',
+      action: 'approval_approve',
+      resource_type: 'approval_request',
+      resource_id: approvalId,
+      provider_id: ar.provider_id,
+      result: 'success',
+      message: `Approval #${approvalId} approved and executed`,
+    });
+
+    return { approved: true, executed: true, ...result };
+  } catch (e) {
+    await query(`UPDATE approval_requests SET status = 'failed' WHERE id = $1`, [approvalId]);
+    throw e;
+  }
+}
+
+async function rejectRequest(approvalId, rejectedBy) {
+  const reqRes = await query(`SELECT * FROM approval_requests WHERE id = $1`, [approvalId]);
+  if (reqRes.rows.length === 0) {
+    throw Object.assign(new Error('Approval request not found'), { code: 'not_found', status: 404 });
+  }
+  const ar = reqRes.rows[0];
+  if (ar.status !== 'pending') {
+    throw Object.assign(new Error(`Approval request is already ${ar.status}`), { code: 'invalid_state', status: 409 });
+  }
+
+  await query(
+    `UPDATE approval_requests SET status = 'rejected', approved_by = $1, decided_at = CURRENT_TIMESTAMP WHERE id = $2`,
+    [rejectedBy || 'system', approvalId]
+  );
+
+  await writeAuditLog({
+    actor: rejectedBy || 'system',
+    action: 'approval_reject',
+    resource_type: 'approval_request',
+    resource_id: approvalId,
+    provider_id: ar.provider_id,
+    result: 'success',
+    message: `Approval #${approvalId} rejected`,
+  });
+
+  return { approved: false, rejected: true };
+}
+
+async function listTasks(limit = 100) {
+  const res = await query(
+    `SELECT * FROM proxmox_tasks ORDER BY created_at DESC LIMIT $1`,
+    [limit]
+  );
+  return res.rows;
+}
+
 module.exports = {
   createProvider,
   listProviders,
@@ -306,4 +738,20 @@ module.exports = {
   syncInventory,
   listAuditLogs,
   writeAuditLog,
+  locateVM,
+  powerAction,
+  getTaskStatus,
+  listTemplates,
+  cloneTemplate,
+  createSnapshotAction,
+  listSnapshotsAction,
+  rollbackSnapshotAction,
+  requireRole,
+  getRole,
+  getActor,
+  createApprovalRequest,
+  listApprovalRequests,
+  approveRequest,
+  rejectRequest,
+  listTasks,
 };

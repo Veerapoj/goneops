@@ -206,4 +206,86 @@ export async function fetchProxmoxAuditLogs(limit) {
   return data;
 }
 
+function getRoleHeaders() {
+  const role = localStorage.getItem('goneops-role') || 'operator';
+  const actor = localStorage.getItem('goneops-actor') || role;
+  return {
+    'X-GoneOps-Role': role,
+    'X-GoneOps-Actor': actor,
+  };
+}
+
+export function setRole(role) {
+  localStorage.setItem('goneops-role', role);
+}
+
+export function getStoredRole() {
+  return localStorage.getItem('goneops-role') || 'operator';
+}
+
+export async function startVM(providerId, vmid) {
+  const { data } = await client.post(`/proxmox/vms/${vmid}/start`, { provider_id: providerId }, { headers: getRoleHeaders() });
+  return data;
+}
+
+export async function stopVM(providerId, vmid) {
+  const { data } = await client.post(`/proxmox/vms/${vmid}/stop`, { provider_id: providerId }, { headers: getRoleHeaders() });
+  return data;
+}
+
+export async function rebootVM(providerId, vmid) {
+  const { data } = await client.post(`/proxmox/vms/${vmid}/reboot`, { provider_id: providerId }, { headers: getRoleHeaders() });
+  return data;
+}
+
+export async function fetchTaskStatus(providerId, upid) {
+  const { data } = await client.get(`/proxmox/tasks/${encodeURIComponent(upid)}`, { params: { provider_id: providerId } });
+  return data;
+}
+
+export async function fetchTasks(limit) {
+  const { data } = await client.get('/proxmox/tasks', { params: { limit } });
+  return data;
+}
+
+export async function fetchTemplates(providerId) {
+  const { data } = await client.get(`/proxmox/providers/${providerId}/templates`);
+  return data;
+}
+
+export async function cloneTemplate(providerId, templateVmid, { name, target_node }) {
+  const { data } = await client.post(`/proxmox/templates/${templateVmid}/clone`, { provider_id: providerId, name, target_node }, { headers: getRoleHeaders() });
+  return data;
+}
+
+export async function createSnapshot(providerId, vmid, { snapname, description }) {
+  const { data } = await client.post(`/proxmox/vms/${vmid}/snapshot`, { provider_id: providerId, snapname, description }, { headers: getRoleHeaders() });
+  return data;
+}
+
+export async function fetchSnapshots(providerId, vmid) {
+  const { data } = await client.get(`/proxmox/vms/${vmid}/snapshots`, { params: { provider_id: providerId } });
+  return data;
+}
+
+export async function rollbackSnapshot(providerId, vmid, snapname) {
+  const { data } = await client.post(`/proxmox/vms/${vmid}/rollback`, { provider_id: providerId, snapname }, { headers: getRoleHeaders() });
+  return data;
+}
+
+export async function listApprovals() {
+  const { data } = await client.get('/proxmox/approvals');
+  return data;
+}
+
+export async function approveRequest(id) {
+  const { data } = await client.post(`/proxmox/approvals/${id}/approve`, {}, { headers: getRoleHeaders() });
+  return data;
+}
+
+export async function rejectRequest(id) {
+  const { data } = await client.post(`/proxmox/approvals/${id}/reject`, {}, { headers: getRoleHeaders() });
+  return data;
+}
+
 export default client;
