@@ -58,7 +58,9 @@ async function listProviders() {
   const result = await query(`
     SELECT p.*,
       (SELECT COUNT(*)::int FROM hosts WHERE provider_id = p.id AND host_type = 'host') AS nodes_count,
-      (SELECT COUNT(*)::int FROM containers WHERE provider_id = p.id) AS containers_count
+      (SELECT COUNT(*)::int FROM containers WHERE provider_id = p.id) AS containers_count,
+      (SELECT ROUND(AVG(cpu_usage_pct)::numeric, 1) FROM hosts WHERE provider_id = p.id AND host_type = 'host') AS cpu_usage_pct,
+      (SELECT ROUND(AVG(memory_usage_pct)::numeric, 1) FROM hosts WHERE provider_id = p.id AND host_type = 'host') AS memory_usage_pct
     FROM providers p
     ORDER BY p.created_at DESC
   `);

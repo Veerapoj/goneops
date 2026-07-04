@@ -99,19 +99,19 @@ export default function Providers() {
                 <div>
                   <div className="flex justify-between text-xs text-slate-500 mb-1">
                     <span>CPU Utilization</span>
-                    <span>~65%</span>
+                    <span>{provider.cpu_usage_pct != null ? `${provider.cpu_usage_pct}%` : '-'}</span>
                   </div>
                   <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                    <div className="h-full w-[65%] bg-amber-500 rounded-full" />
+                    <div className="h-full bg-amber-500 rounded-full" style={{ width: `${Math.min(provider.cpu_usage_pct || 0, 100)}%` }} />
                   </div>
                 </div>
                 <div>
                   <div className="flex justify-between text-xs text-slate-500 mb-1">
                     <span>Memory Utilization</span>
-                    <span>~55%</span>
+                    <span>{provider.memory_usage_pct != null ? `${provider.memory_usage_pct}%` : '-'}</span>
                   </div>
                   <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                    <div className="h-full w-[55%] bg-pink-500 rounded-full" />
+                    <div className="h-full bg-pink-500 rounded-full" style={{ width: `${Math.min(provider.memory_usage_pct || 0, 100)}%` }} />
                   </div>
                 </div>
               </div>
