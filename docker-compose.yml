@@ -35,8 +35,12 @@ services:
       - NODE_ENV=development
       - PUBLIC_HOST=192.168.1.147
       - PROXMOX_TOKEN_ENC_KEY=change-me-to-a-strong-random-string-at-least-32-chars
+      - PVE_SSH_HOST=192.168.1.165
+      - PVE_SSH_USER=root
+      - PVE_SSH_KEY=/ssh-key/id_ed25519_pve
+      - PVE_SSH_PORT=22
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
+      - /home/veenews/.ssh/id_ed25519_pve:/ssh-key/id_ed25519_pve:ro
       - goneops_sandboxes:/tmp/goneops-sandboxes
     networks:
       - goneops_net
