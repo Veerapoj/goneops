@@ -216,6 +216,12 @@ CREATE INDEX IF NOT EXISTS idx_approval_requests_status ON approval_requests(sta
 CREATE INDEX IF NOT EXISTS idx_approval_requests_provider ON approval_requests(provider_id);
 
 ALTER TABLE proxmox_providers ADD COLUMN IF NOT EXISTS quota_max_vms INTEGER;
+
+ALTER TABLE environments ADD COLUMN IF NOT EXISTS lxc_vmid INTEGER;
+ALTER TABLE environments ADD COLUMN IF NOT EXISTS lxc_node VARCHAR(255);
+ALTER TABLE environments ADD COLUMN IF NOT EXISTS lxc_provider_id INTEGER;
+ALTER TABLE environments ADD COLUMN IF NOT EXISTS lxc_ip VARCHAR(45);
+ALTER TABLE environments ADD COLUMN IF NOT EXISTS lxc_status VARCHAR(50) DEFAULT 'pending';
 `;
 
 async function ensureInventorySchema() {

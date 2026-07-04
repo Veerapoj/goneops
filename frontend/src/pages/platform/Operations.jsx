@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { HardDrive, ShieldCheck, AlertTriangle, Loader2, Server, CheckCircle2, Clock } from 'lucide-react';
+import { HardDrive, ShieldCheck, Loader2, Server, CheckCircle2, Clock } from 'lucide-react';
+import { fetchProxmoxProviders, fetchProxmoxVMs } from '../../api/client';
 
 export default function Operations() {
   const [backups, setBackups] = useState([]);
@@ -15,11 +16,21 @@ export default function Operations() {
         const certs = await certRes.json();
         setCertificates(Array.isArray(certs) ? certs : []);
 
-        // Fetch VM list to identify PBS VM
-        const vmRes = await fetch('/api/proxmox/providers/1/vms');
-        const vms = await vmRes.json();
-        const vmList = Array.isArray(vms) ? vms : (vms.vms || []);
-        const pbsVm = vmList.find(v => (v.name || '').includes('pbs'));
+        const providers = await fetchProxmoxProviders();
+        const connectedProviders = providers.filter((provider) => provider.status === 'connected');
+        const vmLists = await Promise.all(
+          connectedProviders.map(async (provider) => {
+            try {
+              const vms = await fetchProxmoxVMs(provider.id);
+              const vmList = Array.isArray(vms) ? vms : (vms.vms || []);
+              return vmList.map((vm) => ({ ...vm, providerName: provider.name }));
+            } catch {
+              return [];
+            }
+          })
+        );
+        const vmList = vmLists.flat();
+        const pbsVm = vmList.find((v) => (v.name || '').toLowerCase().includes('pbs'));
         
         // Build real backup status from actual infrastructure
         const backupData = [];
@@ -31,16 +42,6 @@ export default function Operations() {
             status: pbsVm.status === 'running' ? 'Running' : 'Stopped',
             detail: pbsVm.status === 'running' ? 'PBS OS ready for configuration' : 'VM created, install PBS OS to enable backups',
             health: pbsVm.status === 'running' ? 'Good' : 'Pending'
-          });
-        }
-        if (backupData.length === 0) {
-          backupData.push({
-            name: 'Proxmox Backup Server',
-            vmName: 'pbs-backup',
-            vmid: 103,
-            status: 'Stopped',
-            detail: 'PBS VM created (vmid 103). Install PBS ISO and configure to enable backup management.',
-            health: 'Pending'
           });
         }
         setBackups(backupData);
@@ -67,6 +68,11 @@ export default function Operations() {
         </h2>
         {loading ? (
           <div className="flex items-center justify-center h-32"><Loader2 size={24} className="animate-spin text-indigo-500" /></div>
+        ) : backups.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-32 bg-white border border-slate-200 rounded-2xl gap-2">
+            <Server size={20} className="text-slate-300" />
+            <p className="text-slate-500 text-sm">No backup server VM found in synced Proxmox inventory.</p>
+          </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             {backups.map((b) => (

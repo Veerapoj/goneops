@@ -12,6 +12,7 @@ async function selectFixture(page) {
   await page.addInitScript(({ projectId, environmentId }) => {
     localStorage.setItem('selectedProjectId', String(projectId));
     localStorage.setItem('selectedEnvironmentId', String(environmentId));
+    localStorage.setItem('goneops-role', 'operator');
   }, { projectId: project.id, environmentId: environment.id });
 }
 

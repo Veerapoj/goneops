@@ -6,6 +6,7 @@ const { listPipelineRuns, runPipeline } = require('../services/pipelineService')
 const { generateSandbox } = require('../sandbox/generator');
 const { runSandbox, stopSandbox, restartSandbox, getSandboxLogs, testApi } = require('../sandbox/runner');
 const { query } = require('../lib/db');
+const { requireRole, writeAuditLog } = require('../services/proxmoxService');
 const fs = require('fs');
 const path = require('path');
 const ALLOWED_FILES = new Set([
@@ -53,17 +54,28 @@ router.post('/projects/:id/environments', async (req, res, next) => {
 });
 
 // POST /api/projects/:id/generate-sandbox
-router.post('/projects/:id/generate-sandbox', async (req, res, next) => {
+router.post('/projects/:id/generate-sandbox', requireRole('operator'), async (req, res, next) => {
   try {
     const { environment_id } = req.body;
     if (!environment_id) return res.status(400).json({ error: { code: 'validation_error', message: 'environment_id required' } });
+
+    const maxQuota = parseInt(process.env.SANDBOX_MAX_PER_PROJECT || '5');
+    const count = await query(
+      `SELECT COUNT(*)::int AS cnt FROM environments
+        WHERE project_id = $1 AND lxc_vmid IS NOT NULL AND lxc_status NOT IN ('destroyed','error')`,
+      [req.params.id]
+    );
+    if (count.rows[0].cnt >= maxQuota) {
+      return res.status(429).json({ error: { code: 'quota_exceeded', message: `Maximum ${maxQuota} sandboxes per project reached` } });
+    }
+
     const result = await generateSandbox(req.params.id, environment_id);
     res.json(result);
   } catch (e) { next(e); }
 });
 
 // POST /api/projects/:id/run
-router.post('/projects/:id/run', async (req, res, next) => {
+router.post('/projects/:id/run', requireRole('operator'), async (req, res, next) => {
   try {
     const { environment_id } = req.body;
     if (!environment_id) return res.status(400).json({ error: { code: 'validation_error', message: 'environment_id required' } });
@@ -73,7 +85,7 @@ router.post('/projects/:id/run', async (req, res, next) => {
 });
 
 // POST /api/projects/:id/stop
-router.post('/projects/:id/stop', async (req, res, next) => {
+router.post('/projects/:id/stop', requireRole('operator'), async (req, res, next) => {
   try {
     const { environment_id } = req.body;
     if (!environment_id) return res.status(400).json({ error: { code: 'validation_error', message: 'environment_id required' } });
@@ -82,7 +94,7 @@ router.post('/projects/:id/stop', async (req, res, next) => {
 });
 
 // POST /api/projects/:id/restart
-router.post('/projects/:id/restart', async (req, res, next) => {
+router.post('/projects/:id/restart', requireRole('operator'), async (req, res, next) => {
   try {
     const { environment_id } = req.body;
     if (!environment_id) return res.status(400).json({ error: { code: 'validation_error', message: 'environment_id required' } });
@@ -345,6 +357,67 @@ router.delete('/projects/:id/secrets/:key', async (req, res, next) => {
     );
     if (!result.rows.length) return res.status(404).json({ error: { code: 'not_found', message: 'Secret not found' } });
     res.json({ deleted: true });
+  } catch (e) { next(e); }
+});
+
+// GET /api/projects/:id/stale-sandboxes
+router.get('/projects/:id/stale-sandboxes', requireRole('admin'), async (req, res, next) => {
+  try {
+    const ttlHours = parseInt(process.env.SANDBOX_TTL_HOURS || '48');
+    const stale = await query(
+      `SELECT e.* FROM environments e
+        WHERE e.project_id = $1
+          AND e.lxc_vmid IS NOT NULL
+          AND e.lxc_status NOT IN ('destroyed', 'error')
+          AND e.updated_at < NOW() - INTERVAL '1 hour' * $2
+        ORDER BY e.updated_at`,
+      [req.params.id, ttlHours]
+    );
+    res.json({ stale: stale.rows, ttl_hours: ttlHours, count: stale.rows.length });
+  } catch (e) { next(e); }
+});
+
+// POST /api/projects/:id/cleanup-stale
+router.post('/projects/:id/cleanup-stale', requireRole('admin'), async (req, res, next) => {
+  try {
+    const ttlHours = parseInt(process.env.SANDBOX_TTL_HOURS || '48');
+    const stale = await query(
+      `SELECT e.* FROM environments e
+        WHERE e.project_id = $1
+          AND e.lxc_vmid IS NOT NULL
+          AND e.lxc_status NOT IN ('destroyed', 'error')
+          AND e.updated_at < NOW() - INTERVAL '1 hour' * $2`,
+      [req.params.id, ttlHours]
+    );
+
+    const results = [];
+    for (const env of stale.rows) {
+      try {
+        if (env.lxc_provider_id) {
+          const proxmoxService = require('../services/proxmoxService');
+          await proxmoxService.deleteInstance(env.lxc_provider_id, env.lxc_vmid, req.goneopsActor || 'system');
+        }
+        await query(
+          "UPDATE environments SET lxc_status = 'destroyed', updated_at = NOW() WHERE id = $1",
+          [env.id]
+        );
+        await writeAuditLog({
+          actor: req.goneopsActor || 'system',
+          action: 'sandbox_cleanup',
+          resource_type: 'lxc',
+          resource_id: env.lxc_vmid,
+          provider_id: env.lxc_provider_id,
+          result: 'success',
+          message: `Stale sandbox env ${env.id} (LXC vmid ${env.lxc_vmid}) cleaned up`,
+          metadata: { environment_id: env.id, vmid: env.lxc_vmid, project_id: req.params.id },
+        });
+        results.push({ environment_id: env.id, vmid: env.lxc_vmid, status: 'destroyed' });
+      } catch (err) {
+        results.push({ environment_id: env.id, vmid: env.lxc_vmid, status: 'error', error: err.message });
+      }
+    }
+
+    res.json({ cleaned: results.length, results });
   } catch (e) { next(e); }
 });
 

@@ -1,10 +1,18 @@
 const { spawn } = require('child_process');
 const { query } = require('../lib/db');
-const fs = require('fs');
-const path = require('path');
 
+const PVE_SSH_HOST = process.env.PVE_SSH_HOST || '';
+const PVE_SSH_USER = process.env.PVE_SSH_USER || 'root';
+const PVE_SSH_KEY = process.env.PVE_SSH_KEY || '';
+const PVE_SSH_PORT = process.env.PVE_SSH_PORT || '22';
 const WS_SESSION_TIMEOUT = parseInt(process.env.TERMINAL_SESSION_TIMEOUT || '600000', 10);
 const WS_MAX_BUFFER = parseInt(process.env.TERMINAL_MAX_BUFFER || '524288', 10);
+
+function buildSshArgs() {
+  const args = ['ssh', '-o', 'StrictHostKeyChecking=no', '-o', 'ConnectTimeout=10', '-p', PVE_SSH_PORT];
+  if (PVE_SSH_KEY) args.push('-i', PVE_SSH_KEY);
+  return args;
+}
 
 function handleTerminal(ws, req) {
   const url = new URL(req.url, `http://${req.headers.host}`);
@@ -49,32 +57,44 @@ function handleTerminal(ws, req) {
       }
 
       const row = env.rows[0];
-      const workingDir = row.working_dir;
-      if (!workingDir) {
+      if (!row.working_dir) {
         return close(4000, 'No sandbox generated. Run generate-sandbox first.');
       }
       if (row.status !== 'running') {
         return close(4000, 'Sandbox is not running. Start it before opening a terminal.');
       }
 
-      const safeProject = row.project_name || row.name;
-      const safeEnv = row.name;
-      const safeProjectName = safeProject.replace(/[^a-zA-Z0-9_-]/g, '_');
-      const safeEnvName = safeEnv.replace(/[^a-zA-Z0-9_-]/g, '_');
-      const composeProject = `${safeProjectName}_${safeEnvName}-sandbox`;
+      if (row.lxc_vmid && PVE_SSH_HOST) {
+        const composeDir = row.working_dir.startsWith('/opt/') ? row.working_dir : '/opt/sandbox';
+        send(JSON.stringify({ type: 'connected', message: `Terminal session established (LXC vmid ${row.lxc_vmid})` }));
 
-      const composePath = path.join(workingDir, 'docker-compose.yml');
-      if (!fs.existsSync(composePath)) {
-        return close(4000, 'Compose file not found in working directory');
+        const cmd = `cd '${composeDir}' && docker compose exec -T web sh`;
+        const sshArgs = [
+          ...buildSshArgs(),
+          `${PVE_SSH_USER}@${PVE_SSH_HOST}`,
+          '--',
+          'pct', 'exec', String(row.lxc_vmid), '--', 'bash', '-c', cmd,
+        ];
+
+        child = spawn(sshArgs[0], sshArgs.slice(1), {
+          stdio: ['pipe', 'pipe', 'pipe'],
+          env: { ...process.env, TERM: 'xterm-256color', LINES: '24', COLUMNS: '80' },
+        });
+      } else {
+        const safeProject = row.project_name || row.name;
+        const safeEnv = row.name;
+        const safeProjectName = safeProject.replace(/[^a-zA-Z0-9_-]/g, '_');
+        const safeEnvName = safeEnv.replace(/[^a-zA-Z0-9_-]/g, '_');
+        const composeProject = `${safeProjectName}_${safeEnvName}-sandbox`;
+
+        send(JSON.stringify({ type: 'connected', message: 'Terminal session established (local Docker)' }));
+
+        child = spawn('docker', ['compose', 'exec', '-T', 'web', 'sh'], {
+          cwd: row.working_dir,
+          stdio: ['pipe', 'pipe', 'pipe'],
+          env: { ...process.env, TERM: 'xterm-256color', LINES: '24', COLUMNS: '80' },
+        });
       }
-
-      send(JSON.stringify({ type: 'connected', message: 'Terminal session established' }));
-
-      child = spawn('docker', ['compose', 'exec', '-T', 'web', 'sh'], {
-        cwd: workingDir,
-        stdio: ['pipe', 'pipe', 'pipe'],
-        env: { ...process.env, TERM: 'xterm-256color', LINES: '24', COLUMNS: '80' },
-      });
 
       let outputBuffer = '';
 

@@ -1,7 +1,7 @@
 const { test, expect } = require('@playwright/test');
 const { fixture, openFixturePage } = require('./helpers');
 
-test('Generate Sandbox creates the required real files and service metadata', async ({ page }) => {
+test('Generate Sandbox creates the required real files and service metadata, with LXC provisioning when Proxmox provider is available', async ({ page }) => {
   const { project, environment, projectName } = fixture();
   await openFixturePage(page, '/sandbox');
   const responsePromise = page.waitForResponse(
@@ -29,6 +29,17 @@ test('Generate Sandbox creates the required real files and service metadata', as
     expect.arrayContaining(['runtime', 'database', 'cache', 'queue'])
   );
   await expect(page.getByText('Generate Sandbox Result')).toBeVisible();
+
+  const envResponse = await page.request.get(
+    `/api/projects/${project.id}`
+  );
+  expect(envResponse.status()).toBe(200);
+  const projectData = await envResponse.json();
+  const targetEnv = (projectData.environments || []).find((e) => e.id === environment.id);
+  if (targetEnv && targetEnv.lxc_vmid) {
+    expect(targetEnv.lxc_vmid).toBeGreaterThan(0);
+    expect(targetEnv.lxc_status).toMatch(/^(provisioning|ready)$/);
+  }
 });
 
 test('file browser lists generated files and opens their real content', async ({ page }) => {

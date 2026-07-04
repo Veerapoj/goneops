@@ -208,7 +208,7 @@ export default function Terminal() {
           <div>
             <div className="font-semibold text-amber-800 text-sm">{error}</div>
             <p className="text-amber-600 text-xs mt-1">
-              Ensure the sandbox is running and Docker is available. The terminal connects to the sandbox web container via <code className="bg-amber-100 px-1 rounded">docker compose exec -T web sh</code>.
+              Ensure the sandbox LXC is running and reachable. The terminal connects to the sandbox web container through the Proxmox host.
             </p>
           </div>
           <button onClick={() => setError(null)} className="ml-auto shrink-0 text-amber-500 hover:text-amber-700">

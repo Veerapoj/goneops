@@ -4,6 +4,8 @@ const crypto = require('crypto');
 const { query } = require('../lib/db');
 const { allocatePorts } = require('./ports');
 const { generateReadme } = require('./readme');
+const proxmoxClient = require('../lib/proxmoxClient');
+const { listProviders: listProxmoxProviders, getProviderWithSecret, buildClientFromProvider, insertTask, writeAuditLog } = require('../services/proxmoxService');
 
 const SANDBOX_BASE = process.env.SANDBOX_BASE_DIR || '/tmp/goneops-sandboxes';
 const PUBLIC_HOST = process.env.PUBLIC_HOST || 'localhost';
@@ -93,6 +95,8 @@ async function generateSandbox(projectId, environmentId) {
       'UPDATE environments SET working_dir = $1, preview_url = $2, updated_at = NOW() WHERE id = $3',
       [workingDir, `http://${PUBLIC_HOST}:${webPort}`, environmentId]
     );
+
+    await provisionSandboxLxc(environmentId, projectId, projectName, envName, prefix, workingDir);
   } catch (genErr) {
     try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (e) { /* ignore */ }
     throw genErr;
@@ -453,6 +457,85 @@ RABBITMQ_URL=amqp://${config.mqUser}:replace-me@${config.prefix}_mq:5672
 
 function generatePassword(length) {
   return crypto.randomBytes(Math.ceil(length * 0.75)).toString('base64url').slice(0, length);
+}
+
+async function provisionSandboxLxc(environmentId, projectId, projectName, envName, prefix, workingDir) {
+  try {
+    const providers = await listProxmoxProviders();
+    const connected = providers.filter((p) => p.status === 'connected');
+    if (!connected.length) {
+      console.log(`[generator] No connected Proxmox provider found; LXC provisioning skipped for env ${environmentId}`);
+      return;
+    }
+
+    const provider = connected[0];
+    const fullProvider = await getProviderWithSecret(provider.id);
+    const client = buildClientFromProvider(fullProvider);
+
+    const nodes = await proxmoxClient.getNodes(client);
+    if (!nodes.length) {
+      console.log(`[generator] No nodes available on Proxmox provider ${provider.id}; LXC provisioning skipped`);
+      return;
+    }
+    const targetNode = nodes[0].node;
+
+    const nextIdData = await proxmoxClient.getNextId(client);
+    const vmid = (nextIdData && nextIdData.nextid) || nextIdData;
+    if (!vmid) {
+      console.log(`[generator] Could not obtain next VM ID; LXC provisioning skipped`);
+      return;
+    }
+
+    const ostemplate = fullProvider.ostemplate || 'local:vztmpl/ubuntu-24.04-standard_24.04-1_amd64.tar.zst';
+
+    const lxcConfig = {
+      ostemplate,
+      vmid,
+      hostname: prefix.replace(/_/g, '-'),
+      storage: 'local-lvm',
+      cores: 2,
+      memory: 2048,
+      swap: 1024,
+      rootfs: 'local-lvm:8',
+      net0: 'name=eth0,bridge=vmbr0,ip=dhcp',
+      password: generatePassword(16),
+      start: true,
+      unprivileged: 1,
+      features: 'nesting=1,keyctl=1',
+    };
+
+    const result = await proxmoxClient.createLXC(client, targetNode, lxcConfig);
+    const upid = (result && result.data) || null;
+    if (upid) {
+      await insertTask({ upid, providerId: provider.id, node: targetNode, vmid, type: 'lxc', action: 'lxc_create' });
+    }
+
+    await query(
+      `UPDATE environments
+          SET lxc_vmid = $1, lxc_node = $2, lxc_provider_id = $3, lxc_status = 'provisioning', updated_at = NOW()
+        WHERE id = $4`,
+      [vmid, targetNode, provider.id, environmentId]
+    );
+
+    await writeAuditLog({
+      actor: 'system',
+      action: 'sandbox_lxc_create',
+      resource_type: 'lxc',
+      resource_id: vmid,
+      provider_id: provider.id,
+      result: 'success',
+      message: `Sandbox LXC ${prefix} (vmid ${vmid}) created on node ${targetNode} for env ${environmentId}`,
+      metadata: { upid, vmid, node: targetNode, environment_id: environmentId, project_id: projectId },
+    });
+
+    console.log(`[generator] LXC vmid ${vmid} provisioned on node ${targetNode} for sandbox env ${environmentId}`);
+  } catch (err) {
+    console.error(`[generator] LXC provisioning failed for env ${environmentId}: ${err.message}`);
+    await query(
+      'UPDATE environments SET lxc_status = $1, updated_at = NOW() WHERE id = $2',
+      ['error', environmentId]
+    );
+  }
 }
 
 function applyTemplate(template, config) {

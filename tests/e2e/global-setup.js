@@ -28,7 +28,10 @@ module.exports = async () => {
   }
   const environment = await environmentResponse.json();
 
+  const roleHeaders = { 'X-GoneOps-Role': 'operator' };
+
   const sandboxResponse = await api.post(`/api/projects/${project.id}/generate-sandbox`, {
+    headers: roleHeaders,
     data: { environment_id: environment.id },
   });
   if (!sandboxResponse.ok()) {

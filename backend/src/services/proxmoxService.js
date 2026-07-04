@@ -914,4 +914,7 @@ module.exports = {
   approveRequest,
   rejectRequest,
   listTasks,
+  getProviderWithSecret,
+  buildClientFromProvider,
+  insertTask,
 };

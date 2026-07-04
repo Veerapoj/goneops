@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Shield, Clock, ScrollText, Loader2, AlertCircle, CheckCircle2, XCircle } from 'lucide-react';
-import { fetchProxmoxProviders } from '../../api/client';
+import { fetchProxmoxAuditLogs } from '../../api/client';
 
 export default function Governance() {
   const [auditLogs, setAuditLogs] = useState([]);
@@ -12,9 +12,7 @@ export default function Governance() {
       setLoading(true);
       setError(null);
       try {
-        // Fetch audit logs from Proxmox Manager
-        const resp = await fetch('http://192.168.1.147:4000/api/proxmox/audit-logs');
-        const data = await resp.json();
+        const data = await fetchProxmoxAuditLogs(200);
         setAuditLogs(Array.isArray(data) ? data : (data.logs || []));
       } catch (e) {
         setError(e.message);

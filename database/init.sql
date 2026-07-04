@@ -19,6 +19,11 @@ CREATE TABLE IF NOT EXISTS environments (
     working_dir VARCHAR(512),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    lxc_vmid INTEGER,
+    lxc_node VARCHAR(255),
+    lxc_provider_id INTEGER,
+    lxc_ip VARCHAR(45),
+    lxc_status VARCHAR(50) DEFAULT 'pending' CHECK (lxc_status IN ('pending','provisioning','ready','error','destroyed')),
     CONSTRAINT unique_project_env UNIQUE (project_id, name),
     CONSTRAINT unique_resource_prefix UNIQUE (resource_prefix)
 );
