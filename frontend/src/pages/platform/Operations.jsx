@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { HardDrive, ShieldCheck, Loader2, Server, CheckCircle2, Clock } from 'lucide-react';
-import { fetchProxmoxProviders, fetchProxmoxVMs } from '../../api/client';
 
 export default function Operations() {
   const [backups, setBackups] = useState([]);
@@ -11,28 +10,15 @@ export default function Operations() {
     const load = async () => {
       setLoading(true);
       try {
-        // Fetch real certificates
         const certRes = await fetch('/api/platform/certificates');
         const certs = await certRes.json();
         setCertificates(Array.isArray(certs) ? certs : []);
 
-        const providers = await fetchProxmoxProviders();
-        const connectedProviders = providers.filter((provider) => provider.status === 'connected');
-        const vmLists = await Promise.all(
-          connectedProviders.map(async (provider) => {
-            try {
-              const vms = await fetchProxmoxVMs(provider.id);
-              const vmList = Array.isArray(vms) ? vms : (vms.vms || []);
-              return vmList.map((vm) => ({ ...vm, providerName: provider.name }));
-            } catch {
-              return [];
-            }
-          })
-        );
-        const vmList = vmLists.flat();
-        const pbsVm = vmList.find((v) => (v.name || '').toLowerCase().includes('pbs'));
-        
-        // Build real backup status from actual infrastructure
+        const vmsRes = await fetch('/api/platform/vms');
+        const vmList = await vmsRes.json();
+        const vms = Array.isArray(vmList) ? vmList : [];
+        const pbsVm = vms.find((v) => (v.name || '').toLowerCase().includes('pbs'));
+
         const backupData = [];
         if (pbsVm) {
           backupData.push({

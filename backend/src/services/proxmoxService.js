@@ -194,12 +194,12 @@ async function syncInventory(id) {
 
   const client = buildClientFromProvider(provider);
 
-  const bridgeRes = await query(
-    `INSERT INTO providers (name, type, status, config) VALUES ($1, 'proxmox', 'connected', $2::jsonb)
-     ON CONFLICT (name) DO UPDATE SET status = 'connected', config = $2::jsonb, updated_at = CURRENT_TIMESTAMP
-     RETURNING id, name`,
-    [provider.name, JSON.stringify({ host: provider.host, port: provider.port, proxmox_provider_id: provider.id })]
-  );
+    const bridgeRes = await query(
+      `INSERT INTO providers (name, type, status, config, data_source) VALUES ($1, 'proxmox', 'connected', $2::jsonb, 'discovered')
+       ON CONFLICT (name) DO UPDATE SET status = 'connected', config = $2::jsonb, data_source = 'discovered', updated_at = CURRENT_TIMESTAMP
+       RETURNING id, name`,
+      [provider.name, JSON.stringify({ host: provider.host, port: provider.port, proxmox_provider_id: provider.id })]
+    );
   const bridgeProviderId = bridgeRes.rows[0].id;
 
   const nodes = await proxmoxClient.getNodes(client);
@@ -214,13 +214,14 @@ async function syncInventory(id) {
     const diskPct = node.maxdisk && node.disk ? Math.round(parseInt(node.disk) / parseInt(node.maxdisk) * 10000) / 100 : 0;
 
     await query(
-      `INSERT INTO hosts (provider_id, hostname, host_type, ip_address, status, cpu_cores, cpu_usage_pct, memory_total_gb, memory_usage_pct, disk_total_gb, disk_usage_pct)
-       VALUES ($1, $2, 'host', $3, 'running', $4, $5, $6, $7, $8, $9)
+      `INSERT INTO hosts (provider_id, hostname, host_type, ip_address, status, cpu_cores, cpu_usage_pct, memory_total_gb, memory_usage_pct, disk_total_gb, disk_usage_pct, data_source)
+       VALUES ($1, $2, 'host', $3, 'running', $4, $5, $6, $7, $8, $9, 'discovered')
        ON CONFLICT (hostname, provider_id) DO UPDATE SET
          host_type = 'host', status = 'running',
          cpu_cores = $4, cpu_usage_pct = $5,
          memory_total_gb = $6, memory_usage_pct = $7,
          disk_total_gb = $8, disk_usage_pct = $9,
+         data_source = 'discovered',
          updated_at = CURRENT_TIMESTAMP`,
       [bridgeProviderId, node.node, node.ip || null, cpuCores, cpuPct, memoryGb, memPct, diskGb, diskPct]
     );
@@ -236,10 +237,10 @@ async function syncInventory(id) {
     for (const vm of qemuVMs) {
       const status = vm.status === 'running' ? 'running' : 'stopped';
       await query(
-        `INSERT INTO vms (name, vmid, provider_id, status, cpu_cores, memory_gb, disk_gb)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
+        `INSERT INTO vms (name, vmid, provider_id, status, cpu_cores, memory_gb, disk_gb, data_source)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'discovered')
          ON CONFLICT (name, provider_id) DO UPDATE SET
-           vmid = $2, status = $4, cpu_cores = $5, memory_gb = $6, disk_gb = $7, updated_at = CURRENT_TIMESTAMP`,
+           vmid = $2, status = $4, cpu_cores = $5, memory_gb = $6, disk_gb = $7, data_source = 'discovered', updated_at = CURRENT_TIMESTAMP`,
         [vm.name || `vm-${vm.vmid}`, String(vm.vmid), bridgeProviderId, status, vm.cpus || 0, vm.maxmem ? Math.round(vm.maxmem / 1073741824 * 100) / 100 : 0, vm.maxdisk ? Math.round(vm.maxdisk / 1073741824 * 100) / 100 : 0]
       );
       foundCount++;
@@ -248,9 +249,9 @@ async function syncInventory(id) {
     for (const lxc of lxcContainers) {
       const status = lxc.status === 'running' ? 'running' : 'stopped';
       await query(
-        `INSERT INTO containers (name, container_id, provider_id, status, cpu_usage_pct, memory_usage_mb)
-         VALUES ($1, $2, $3, $4, 0, 0)
-         ON CONFLICT (provider_id, container_id) DO UPDATE SET status = $4, updated_at = CURRENT_TIMESTAMP`,
+        `INSERT INTO containers (name, container_id, provider_id, status, cpu_usage_pct, memory_usage_mb, data_source)
+         VALUES ($1, $2, $3, $4, 0, 0, 'discovered')
+         ON CONFLICT (provider_id, container_id) DO UPDATE SET status = $4, data_source = 'discovered', updated_at = CURRENT_TIMESTAMP`,
         [lxc.name || `ct-${lxc.vmid}`, String(lxc.vmid), bridgeProviderId, status]
       );
       foundCount++;

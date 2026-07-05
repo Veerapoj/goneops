@@ -10,6 +10,7 @@ async function getResourcesAggregate() {
       SUM(disk_total_gb)::numeric AS total_disk_gb,
       ROUND(AVG(disk_usage_pct)::numeric, 1) AS avg_disk_pct
     FROM hosts
+    WHERE data_source = 'discovered'
   `);
   const row = h.rows[0] || {};
   const totalCpu = row.total_cpu_cores || 0;
@@ -31,12 +32,12 @@ async function getResourcesAggregate() {
 }
 
 async function getDashboardStats() {
-  const hosts = await query('SELECT COUNT(*)::int AS count FROM hosts');
-  const vms = await query('SELECT COUNT(*)::int AS count FROM vms');
-  const containers = await query('SELECT COUNT(*)::int AS count FROM containers');
-  const applications = await query('SELECT COUNT(*)::int AS count FROM applications');
-  const providers = await query('SELECT COUNT(*)::int AS count FROM providers');
-  const connectedProviders = await query("SELECT COUNT(*)::int AS count FROM providers WHERE status = 'connected'");
+  const hosts = await query("SELECT COUNT(*)::int AS count FROM hosts WHERE data_source = 'discovered'");
+  const vms = await query("SELECT COUNT(*)::int AS count FROM vms WHERE data_source = 'discovered'");
+  const containers = await query("SELECT COUNT(*)::int AS count FROM containers WHERE data_source = 'discovered'");
+  const applications = await query("SELECT COUNT(*)::int AS count FROM applications WHERE data_source = 'discovered'");
+  const providers = await query("SELECT COUNT(*)::int AS count FROM providers WHERE data_source = 'discovered'");
+  const connectedProviders = await query("SELECT COUNT(*)::int AS count FROM providers WHERE status = 'connected' AND data_source = 'discovered'");
   const criticalCerts = await query("SELECT COUNT(*)::int AS count FROM certificates WHERE status IN ('critical', 'expired')");
   const syncJobs = await query('SELECT COUNT(*)::int AS count FROM sync_jobs');
   const resources = await getResourcesAggregate();
@@ -57,11 +58,12 @@ async function getDashboardStats() {
 async function listProviders() {
   const result = await query(`
     SELECT p.*,
-      (SELECT COUNT(*)::int FROM hosts WHERE provider_id = p.id AND host_type = 'host') AS nodes_count,
-      (SELECT COUNT(*)::int FROM containers WHERE provider_id = p.id) AS containers_count,
-      (SELECT ROUND(AVG(cpu_usage_pct)::numeric, 1) FROM hosts WHERE provider_id = p.id AND host_type = 'host') AS cpu_usage_pct,
-      (SELECT ROUND(AVG(memory_usage_pct)::numeric, 1) FROM hosts WHERE provider_id = p.id AND host_type = 'host') AS memory_usage_pct
+      (SELECT COUNT(*)::int FROM hosts WHERE provider_id = p.id AND host_type = 'host' AND data_source = 'discovered') AS nodes_count,
+      (SELECT COUNT(*)::int FROM containers WHERE provider_id = p.id AND data_source = 'discovered') AS containers_count,
+      (SELECT ROUND(AVG(cpu_usage_pct)::numeric, 1) FROM hosts WHERE provider_id = p.id AND host_type = 'host' AND data_source = 'discovered') AS cpu_usage_pct,
+      (SELECT ROUND(AVG(memory_usage_pct)::numeric, 1) FROM hosts WHERE provider_id = p.id AND host_type = 'host' AND data_source = 'discovered') AS memory_usage_pct
     FROM providers p
+    WHERE p.data_source = 'discovered'
     ORDER BY p.created_at DESC
   `);
   return result.rows;
@@ -71,7 +73,8 @@ async function listHosts() {
   const result = await query(`
     SELECT h.*, p.name AS provider_name, p.type AS provider_type
     FROM hosts h
-    LEFT JOIN providers p ON p.id = h.provider_id
+    LEFT JOIN providers p ON p.id = h.provider_id AND p.data_source = 'discovered'
+    WHERE h.data_source = 'discovered'
     ORDER BY h.hostname
   `);
   return result.rows;
@@ -81,8 +84,9 @@ async function listVMs() {
   const result = await query(`
     SELECT v.*, h.hostname AS hostname, p.name AS provider_name
     FROM vms v
-    LEFT JOIN hosts h ON h.id = v.host_id
-    LEFT JOIN providers p ON p.id = v.provider_id
+    LEFT JOIN hosts h ON h.id = v.host_id AND h.data_source = 'discovered'
+    LEFT JOIN providers p ON p.id = v.provider_id AND p.data_source = 'discovered'
+    WHERE v.data_source = 'discovered'
     ORDER BY v.name
   `);
   return result.rows;
@@ -92,8 +96,9 @@ async function listContainers() {
   const result = await query(`
     SELECT c.*, h.hostname AS host_name, p.name AS provider_name
     FROM containers c
-    LEFT JOIN hosts h ON h.id = c.host_id
-    LEFT JOIN providers p ON p.id = c.provider_id
+    LEFT JOIN hosts h ON h.id = c.host_id AND h.data_source = 'discovered'
+    LEFT JOIN providers p ON p.id = c.provider_id AND p.data_source = 'discovered'
+    WHERE c.data_source = 'discovered'
     ORDER BY c.name
   `);
   return result.rows;
@@ -104,6 +109,7 @@ async function listApplications() {
     SELECT a.*, pj.name AS project_name
     FROM applications a
     LEFT JOIN projects pj ON pj.id = a.project_id
+    WHERE a.data_source = 'discovered'
     ORDER BY a.name
   `);
   return result.rows;
@@ -134,23 +140,26 @@ async function getServiceMap() {
   const hostsRes = await query(`
     SELECT h.*, p.name AS provider_name, p.type AS provider_type
     FROM hosts h
-    LEFT JOIN providers p ON p.id = h.provider_id
+    LEFT JOIN providers p ON p.id = h.provider_id AND p.data_source = 'discovered'
+    WHERE h.data_source = 'discovered'
     ORDER BY h.hostname
   `);
 
   const containersRes = await query(`
     SELECT c.*, h.hostname AS host_name, p.name AS provider_name
     FROM containers c
-    LEFT JOIN hosts h ON h.id = c.host_id
-    LEFT JOIN providers p ON p.id = c.provider_id
+    LEFT JOIN hosts h ON h.id = c.host_id AND h.data_source = 'discovered'
+    LEFT JOIN providers p ON p.id = c.provider_id AND p.data_source = 'discovered'
+    WHERE c.data_source = 'discovered'
     ORDER BY c.name
   `);
 
   const vmsRes = await query(`
     SELECT v.*, h.hostname AS hostname, p.name AS provider_name
     FROM vms v
-    LEFT JOIN hosts h ON h.id = v.host_id
-    LEFT JOIN providers p ON p.id = v.provider_id
+    LEFT JOIN hosts h ON h.id = v.host_id AND h.data_source = 'discovered'
+    LEFT JOIN providers p ON p.id = v.provider_id AND p.data_source = 'discovered'
+    WHERE v.data_source = 'discovered'
     ORDER BY v.name
   `);
 
@@ -237,6 +246,7 @@ async function getCapacity() {
       COUNT(*)::int AS total,
       COUNT(*) FILTER (WHERE status = 'running')::int AS running
     FROM containers
+    WHERE data_source = 'discovered'
   `);
 
   const vmsRes = await query(`
@@ -244,6 +254,7 @@ async function getCapacity() {
       COUNT(*)::int AS total,
       COUNT(*) FILTER (WHERE status = 'running')::int AS running
     FROM vms
+    WHERE data_source = 'discovered'
   `);
 
   const capacityData = resources.map((r) => ({
@@ -255,7 +266,7 @@ async function getCapacity() {
   }));
 
   const idleResources = [];
-  for (const vm of (await query(`SELECT name, cpu_cores, memory_gb, status FROM vms WHERE status = 'stopped' ORDER BY name LIMIT 3`)).rows) {
+  for (const vm of (await query(`SELECT name, cpu_cores, memory_gb, status FROM vms WHERE status = 'stopped' AND data_source = 'discovered' ORDER BY name LIMIT 3`)).rows) {
     idleResources.push({
       id: vm.name,
       name: vm.name,
@@ -266,7 +277,7 @@ async function getCapacity() {
     });
   }
 
-  for (const c of (await query(`SELECT name, cpu_usage_pct, memory_usage_mb, status FROM containers WHERE status = 'stopped' ORDER BY name LIMIT 3`)).rows) {
+  for (const c of (await query(`SELECT name, cpu_usage_pct, memory_usage_mb, status FROM containers WHERE status = 'stopped' AND data_source = 'discovered' ORDER BY name LIMIT 3`)).rows) {
     idleResources.push({
       id: c.name,
       name: c.name,
@@ -280,18 +291,18 @@ async function getCapacity() {
   return {
     capacityData,
     idleResources: idleResources.slice(0, 6),
-    hostCount: (await query('SELECT COUNT(*)::int AS count FROM hosts')).rows[0].count || 0,
+    hostCount: (await query("SELECT COUNT(*)::int AS count FROM hosts WHERE data_source = 'discovered'")).rows[0].count || 0,
     vmCount: vmsRes.rows[0].total || 0,
     containerCount: containersRes.rows[0].total || 0,
   };
 }
 
 async function getPlatformOverview() {
-  const providers = await query('SELECT COUNT(*)::int AS count FROM providers');
-  const hosts = await query('SELECT COUNT(*)::int AS count FROM hosts');
-  const vms = await query('SELECT COUNT(*)::int AS count FROM vms');
-  const containers = await query('SELECT COUNT(*)::int AS count FROM containers');
-  const applications = await query('SELECT COUNT(*)::int AS count FROM applications');
+  const providers = await query("SELECT COUNT(*)::int AS count FROM providers WHERE data_source = 'discovered'");
+  const hosts = await query("SELECT COUNT(*)::int AS count FROM hosts WHERE data_source = 'discovered'");
+  const vms = await query("SELECT COUNT(*)::int AS count FROM vms WHERE data_source = 'discovered'");
+  const containers = await query("SELECT COUNT(*)::int AS count FROM containers WHERE data_source = 'discovered'");
+  const applications = await query("SELECT COUNT(*)::int AS count FROM applications WHERE data_source = 'discovered'");
   const lastSync = await query(`
     SELECT GREATEST(
       COALESCE(MAX(sync_jobs.completed_at), '1970-01-01'::timestamptz),

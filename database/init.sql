@@ -5,11 +5,18 @@ CREATE TABLE IF NOT EXISTS projects (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) UNIQUE NOT NULL,
     is_test BOOLEAN DEFAULT false,
+    data_source VARCHAR(20) NOT NULL DEFAULT 'seed' CHECK (data_source IN ('seed','discovered','sandbox')),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS is_test BOOLEAN DEFAULT false;
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS data_source VARCHAR(20) NOT NULL DEFAULT 'seed';
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_projects_data_source' AND conrelid = 'projects'::regclass) THEN
+    ALTER TABLE projects ADD CONSTRAINT chk_projects_data_source CHECK (data_source IN ('seed','discovered','sandbox'));
+  END IF;
+END $$;
 
 -- 2. Environments Table
 CREATE TABLE IF NOT EXISTS environments (
@@ -20,6 +27,7 @@ CREATE TABLE IF NOT EXISTS environments (
     status VARCHAR(50) DEFAULT 'stopped' CHECK (status IN ('stopped','generating','starting','running','stopping','restarting','failed')),
     preview_url VARCHAR(255),
     working_dir VARCHAR(512),
+    data_source VARCHAR(20) NOT NULL DEFAULT 'seed' CHECK (data_source IN ('seed','discovered','sandbox')),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     lxc_vmid INTEGER,
@@ -31,6 +39,12 @@ CREATE TABLE IF NOT EXISTS environments (
     CONSTRAINT unique_resource_prefix UNIQUE (resource_prefix)
 );
 CREATE INDEX IF NOT EXISTS idx_environments_resource_prefix ON environments(resource_prefix);
+ALTER TABLE environments ADD COLUMN IF NOT EXISTS data_source VARCHAR(20) NOT NULL DEFAULT 'seed';
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_environments_data_source' AND conrelid = 'environments'::regclass) THEN
+    ALTER TABLE environments ADD CONSTRAINT chk_environments_data_source CHECK (data_source IN ('seed','discovered','sandbox'));
+  END IF;
+END $$;
 
 -- 3. Services Table
 CREATE TABLE IF NOT EXISTS services (
@@ -41,10 +55,17 @@ CREATE TABLE IF NOT EXISTS services (
     status VARCHAR(50) DEFAULT 'unhealthy', -- e.g., 'healthy', 'unhealthy'
     port INTEGER NOT NULL,
     config JSONB DEFAULT '{}'::jsonb,
+    data_source VARCHAR(20) NOT NULL DEFAULT 'seed' CHECK (data_source IN ('seed','discovered','sandbox')),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT unique_environment_service UNIQUE (environment_id, name)
 );
+ALTER TABLE services ADD COLUMN IF NOT EXISTS data_source VARCHAR(20) NOT NULL DEFAULT 'seed';
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_services_data_source' AND conrelid = 'services'::regclass) THEN
+    ALTER TABLE services ADD CONSTRAINT chk_services_data_source CHECK (data_source IN ('seed','discovered','sandbox'));
+  END IF;
+END $$;
 
 -- 4. Deployments Table
 CREATE TABLE IF NOT EXISTS deployments (

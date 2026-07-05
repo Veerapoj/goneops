@@ -52,14 +52,14 @@ router.get('/mapping/:app', async (req, res, next) => {
             pr.type AS provider_type,
             pr.status AS provider_status
           FROM services s
-          LEFT JOIN containers c ON c.environment_id = s.environment_id
-          LEFT JOIN vms v ON v.environment_id = s.environment_id
-          LEFT JOIN hosts h ON (h.id = c.host_id OR h.id = v.host_id)
+          LEFT JOIN containers c ON c.environment_id = s.environment_id AND c.data_source = 'discovered'
+          LEFT JOIN vms v ON v.environment_id = s.environment_id AND v.data_source = 'discovered'
+          LEFT JOIN hosts h ON (h.id = c.host_id OR h.id = v.host_id) AND h.data_source = 'discovered'
           LEFT JOIN providers pr ON (
             pr.id = c.provider_id OR pr.id = v.provider_id
-            OR pr.id = (SELECT provider_id FROM hosts WHERE id = c.host_id)
-            OR pr.id = (SELECT provider_id FROM hosts WHERE id = v.host_id)
-          )
+            OR pr.id = (SELECT provider_id FROM hosts WHERE id = c.host_id AND data_source = 'discovered' LIMIT 1)
+            OR pr.id = (SELECT provider_id FROM hosts WHERE id = v.host_id AND data_source = 'discovered' LIMIT 1)
+          ) AND pr.data_source = 'discovered'
           WHERE s.id = $1
           LIMIT 1
         `, [svc.id]);
@@ -104,19 +104,19 @@ router.get('/assets', async (req, res, next) => {
     const result = await query(`
       SELECT 'provider' AS asset_type, id, name,
              status, NULL::int AS provider_id, NULL::int AS parent_id
-      FROM providers
+      FROM providers WHERE data_source = 'discovered'
       UNION ALL
       SELECT 'host' AS asset_type, id, hostname AS name,
              status, provider_id, provider_id AS parent_id
-      FROM hosts
+      FROM hosts WHERE data_source = 'discovered'
       UNION ALL
       SELECT 'vm' AS asset_type, id, name,
              status, provider_id, host_id AS parent_id
-      FROM vms
+      FROM vms WHERE data_source = 'discovered'
       UNION ALL
       SELECT 'container' AS asset_type, id, name,
              status, provider_id, host_id AS parent_id
-      FROM containers
+      FROM containers WHERE data_source = 'discovered'
       ORDER BY asset_type, id
     `);
     res.json({ assets: result.rows });

@@ -238,6 +238,70 @@ CREATE INDEX IF NOT EXISTS idx_containers_application ON containers(application_
 CREATE INDEX IF NOT EXISTS idx_containers_environment ON containers(environment_id);
 CREATE INDEX IF NOT EXISTS idx_containers_service ON containers(service_id);
 
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS data_source VARCHAR(20) NOT NULL DEFAULT 'seed';
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_projects_data_source' AND conrelid = 'projects'::regclass) THEN
+    ALTER TABLE projects ADD CONSTRAINT chk_projects_data_source CHECK (data_source IN ('seed','discovered','sandbox'));
+  END IF;
+END $$;
+CREATE INDEX IF NOT EXISTS idx_projects_data_source ON projects(data_source);
+
+ALTER TABLE environments ADD COLUMN IF NOT EXISTS data_source VARCHAR(20) NOT NULL DEFAULT 'seed';
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_environments_data_source' AND conrelid = 'environments'::regclass) THEN
+    ALTER TABLE environments ADD CONSTRAINT chk_environments_data_source CHECK (data_source IN ('seed','discovered','sandbox'));
+  END IF;
+END $$;
+CREATE INDEX IF NOT EXISTS idx_environments_data_source ON environments(data_source);
+
+ALTER TABLE services ADD COLUMN IF NOT EXISTS data_source VARCHAR(20) NOT NULL DEFAULT 'seed';
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_services_data_source' AND conrelid = 'services'::regclass) THEN
+    ALTER TABLE services ADD CONSTRAINT chk_services_data_source CHECK (data_source IN ('seed','discovered','sandbox'));
+  END IF;
+END $$;
+CREATE INDEX IF NOT EXISTS idx_services_data_source ON services(data_source);
+
+ALTER TABLE providers ADD COLUMN IF NOT EXISTS data_source VARCHAR(20) NOT NULL DEFAULT 'discovered';
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_providers_data_source' AND conrelid = 'providers'::regclass) THEN
+    ALTER TABLE providers ADD CONSTRAINT chk_providers_data_source CHECK (data_source IN ('seed','discovered','sandbox'));
+  END IF;
+END $$;
+CREATE INDEX IF NOT EXISTS idx_providers_data_source ON providers(data_source);
+
+ALTER TABLE hosts ADD COLUMN IF NOT EXISTS data_source VARCHAR(20) NOT NULL DEFAULT 'discovered';
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_hosts_data_source' AND conrelid = 'hosts'::regclass) THEN
+    ALTER TABLE hosts ADD CONSTRAINT chk_hosts_data_source CHECK (data_source IN ('seed','discovered','sandbox'));
+  END IF;
+END $$;
+CREATE INDEX IF NOT EXISTS idx_hosts_data_source ON hosts(data_source);
+
+ALTER TABLE vms ADD COLUMN IF NOT EXISTS data_source VARCHAR(20) NOT NULL DEFAULT 'discovered';
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_vms_data_source' AND conrelid = 'vms'::regclass) THEN
+    ALTER TABLE vms ADD CONSTRAINT chk_vms_data_source CHECK (data_source IN ('seed','discovered','sandbox'));
+  END IF;
+END $$;
+CREATE INDEX IF NOT EXISTS idx_vms_data_source ON vms(data_source);
+
+ALTER TABLE containers ADD COLUMN IF NOT EXISTS data_source VARCHAR(20) NOT NULL DEFAULT 'discovered';
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_containers_data_source' AND conrelid = 'containers'::regclass) THEN
+    ALTER TABLE containers ADD CONSTRAINT chk_containers_data_source CHECK (data_source IN ('seed','discovered','sandbox'));
+  END IF;
+END $$;
+CREATE INDEX IF NOT EXISTS idx_containers_data_source ON containers(data_source);
+
+ALTER TABLE applications ADD COLUMN IF NOT EXISTS data_source VARCHAR(20) NOT NULL DEFAULT 'discovered';
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_applications_data_source' AND conrelid = 'applications'::regclass) THEN
+    ALTER TABLE applications ADD CONSTRAINT chk_applications_data_source CHECK (data_source IN ('seed','discovered','sandbox'));
+  END IF;
+END $$;
+CREATE INDEX IF NOT EXISTS idx_applications_data_source ON applications(data_source);
+
 CREATE TABLE IF NOT EXISTS asset_relationships (
     id SERIAL PRIMARY KEY,
     source_type VARCHAR(50) NOT NULL,

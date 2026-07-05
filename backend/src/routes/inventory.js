@@ -46,6 +46,14 @@ router.get('/platform/containers', async (req, res, next) => {
   }
 });
 
+router.get('/platform/vms', async (req, res, next) => {
+  try {
+    res.json(await listVMs());
+  } catch (e) {
+    next(e);
+  }
+});
+
 router.get('/platform/applications', async (req, res, next) => {
   try {
     res.json(await listApplications());
