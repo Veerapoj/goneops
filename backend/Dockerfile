@@ -1,6 +1,6 @@
 FROM node:20-alpine
 WORKDIR /app
-RUN apk add --no-cache docker-cli docker-cli-compose
+RUN apk add --no-cache openssh-client
 COPY package.json package-lock.json ./
 RUN npm ci --production
 COPY src/ ./src/
