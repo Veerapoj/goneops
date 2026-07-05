@@ -362,18 +362,33 @@ async function getRuntimeHealth() {
     if (!db) {
       const labels = c.Labels || '';
       const project = String(labels).match(/goneops\.project=([^,]+)/)?.[1];
+      const env = String(labels).match(/goneops\.env=([^,]+)/)?.[1];
       const service = String(labels).match(/goneops\.service=([^,]+)/)?.[1];
-      if (project && service) {
+      if (service) {
         const labelMatch = await query(
           `SELECT c.id, c.container_id, c.name, c.service_id, s.name AS service_name
            FROM containers c
-           LEFT JOIN services s ON s.id = c.service_id
-           WHERE c.name = $1 AND c.data_source = 'discovered'
+           JOIN services s ON s.name ILIKE $1
+           WHERE c.service_id = s.id AND c.data_source = 'discovered'
            LIMIT 1`,
-          [c.Names || c.Name || '']
+          [service]
         );
         if (labelMatch.rows.length > 0) {
           db = labelMatch.rows[0];
+        } else {
+          const directMatch = await query(
+            `SELECT id, $1 AS container_id, $2 AS name, id AS service_id, $1 AS service_name
+             FROM services WHERE name ILIKE $1 AND environment_id = ANY(
+               SELECT id FROM environments WHERE project_id = (
+                 SELECT id FROM projects WHERE name ILIKE $3
+               )
+             )
+             LIMIT 1`,
+            [service, c.Names || c.Name || '', project || '']
+          );
+          if (directMatch.rows.length > 0) {
+            db = directMatch.rows[0];
+          }
         }
       }
     }
