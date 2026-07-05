@@ -319,6 +319,23 @@ router.get('/projects/:id/deployments', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// POST /api/projects/:id/deployments
+router.post('/projects/:id/deployments', async (req, res, next) => {
+  try {
+    const { version, environment_id, status, image, logs } = req.body;
+    if (!version || !environment_id) {
+      return res.status(400).json({ error: { code: 'validation_error', message: 'version and environment_id required' } });
+    }
+    const result = await query(
+      `INSERT INTO deployments (project_id, environment_id, version, status, image, logs)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [req.params.id, environment_id, version, status || 'running', image || null, logs || null]
+    );
+    await audit({ actor: req.goneopsActor || 'system', action: 'deployment_create', resource_type: 'deployment', resource_id: result.rows[0].id, result: 'success', message: `Deployment ${version} created` });
+    res.status(201).json(result.rows[0]);
+  } catch (e) { next(e); }
+});
+
 // GET /api/projects/:id/secrets
 router.get('/projects/:id/secrets', async (req, res, next) => {
   try {

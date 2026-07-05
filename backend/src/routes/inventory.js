@@ -62,7 +62,24 @@ router.get('/platform/applications', async (req, res, next) => {
   }
 });
 
-router.get('/platform/certificates', async (req, res, next) => {
+ router.post('/platform/applications', async (req, res, next) => {
+   try {
+     const { name, project_id, owner, team, description } = req.body;
+     if (!name || !project_id) {
+       return res.status(400).json({ error: { code: 'validation_error', message: 'name and project_id required' } });
+     }
+     const result = await query(
+       `INSERT INTO applications (name, project_id, owner, team, description, data_source)
+        VALUES ($1, $2, $3, $4, $5, 'discovered') RETURNING *`,
+       [name, project_id, owner || null, team || null, description || null]
+     );
+     res.status(201).json(result.rows[0]);
+   } catch (e) {
+     next(e);
+   }
+ });
+
+ router.get('/platform/certificates', async (req, res, next) => {
   try {
     res.json(await listCertificates());
   } catch (e) {
