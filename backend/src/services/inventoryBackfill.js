@@ -1,19 +1,21 @@
 const { query } = require('../lib/db');
 
 async function runBackfill() {
-  await query(`UPDATE projects SET data_source = 'seed' WHERE id = 1`);
-  await query(`UPDATE projects SET data_source = 'sandbox' WHERE id != 1`);
+  await query(`UPDATE projects SET data_source = 'seed' WHERE id = 1 AND data_source IS DISTINCT FROM 'seed'`);
+  await query(`UPDATE projects SET data_source = 'sandbox' WHERE id != 1 AND data_source IS DISTINCT FROM 'sandbox'`);
 
-  await query(`UPDATE environments SET data_source = 'seed' WHERE project_id = 1`);
-  await query(`UPDATE environments SET data_source = 'sandbox' WHERE project_id != 1`);
+  await query(`UPDATE environments SET data_source = 'seed' WHERE project_id = 1 AND data_source IS DISTINCT FROM 'seed'`);
+  await query(`UPDATE environments SET data_source = 'sandbox' WHERE project_id != 1 AND data_source IS DISTINCT FROM 'sandbox'`);
 
   await query(`
     UPDATE services SET data_source = 'seed'
     WHERE environment_id IN (SELECT id FROM environments WHERE project_id = 1)
+    AND data_source IS DISTINCT FROM 'seed'
   `);
   await query(`
     UPDATE services SET data_source = 'sandbox'
     WHERE environment_id NOT IN (SELECT id FROM environments WHERE project_id = 1)
+    AND data_source IS DISTINCT FROM 'sandbox'
   `);
 
   await query(`

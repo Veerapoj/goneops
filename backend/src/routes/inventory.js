@@ -102,4 +102,14 @@ router.get('/platform/overview', async (req, res, next) => {
   }
 });
 
+router.get('/platform/audit-logs', async (req, res, next) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit) || 100, 500);
+    const result = await query('SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT $1', [limit]);
+    res.json(result.rows);
+  } catch (e) {
+    next(e);
+  }
+});
+
 module.exports = router;

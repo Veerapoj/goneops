@@ -51,7 +51,8 @@ async function createProject(name, isTest = false) {
     throw err;
   }
   const result = await query(
-    'INSERT INTO projects (name, is_test) VALUES ($1, $2) RETURNING *', [name, isTest]
+    'INSERT INTO projects (name, is_test, data_source) VALUES ($1, $2, $3) RETURNING *',
+    [name, isTest, isTest ? 'sandbox' : 'seed']
   );
   return result.rows[0];
 }

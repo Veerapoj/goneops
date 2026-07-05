@@ -516,7 +516,6 @@ router.get('/projects/:id/runtime', async (req, res, next) => {
         c.status AS container_status
       FROM services s
       JOIN environments e ON e.id = s.environment_id
-      LEFT JOIN applications a ON a.project_id = e.project_id
       LEFT JOIN containers c ON c.environment_id = e.id AND c.data_source = 'discovered'
       LEFT JOIN providers pr ON (c.provider_id = pr.id OR e.lxc_provider_id = pr.id) AND pr.data_source = 'discovered'
       LEFT JOIN hosts h ON (c.host_id = h.id OR h.provider_id = pr.id) AND h.data_source = 'discovered'

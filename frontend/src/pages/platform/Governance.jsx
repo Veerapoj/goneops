@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { Shield, Clock, ScrollText, Loader2, AlertCircle, CheckCircle2, XCircle } from 'lucide-react';
-import { fetchProxmoxAuditLogs } from '../../api/client';
 
 export default function Governance() {
   const [auditLogs, setAuditLogs] = useState([]);
@@ -12,8 +11,10 @@ export default function Governance() {
       setLoading(true);
       setError(null);
       try {
-        const data = await fetchProxmoxAuditLogs(200);
-        setAuditLogs(Array.isArray(data) ? data : (data.logs || []));
+        const res = await fetch('/api/platform/audit-logs?limit=200');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        setAuditLogs(Array.isArray(data) ? data : []);
       } catch (e) {
         setError(e.message);
       } finally {
