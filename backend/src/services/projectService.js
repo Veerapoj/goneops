@@ -1,6 +1,7 @@
 const { query } = require('../lib/db');
 
-async function listProjects() {
+async function listProjects(includeTest = false) {
+  const whereClause = includeTest ? '' : 'WHERE (p.is_test IS NULL OR p.is_test = false)';
   const result = await query(`
     SELECT p.*,
       json_agg(json_build_object(
@@ -9,6 +10,7 @@ async function listProjects() {
       ) ORDER BY e.name) FILTER (WHERE e.id IS NOT NULL) AS environments
     FROM projects p
     LEFT JOIN environments e ON e.project_id = p.id
+    ${whereClause}
     GROUP BY p.id
     ORDER BY p.created_at DESC
   `);
@@ -40,7 +42,7 @@ async function getProject(id) {
   };
 }
 
-async function createProject(name) {
+async function createProject(name, isTest = false) {
   const existing = await query('SELECT id FROM projects WHERE name = $1', [name]);
   if (existing.rows.length) {
     const err = new Error('Project name already exists');
@@ -49,7 +51,7 @@ async function createProject(name) {
     throw err;
   }
   const result = await query(
-    'INSERT INTO projects (name) VALUES ($1) RETURNING *', [name]
+    'INSERT INTO projects (name, is_test) VALUES ($1, $2) RETURNING *', [name, isTest]
   );
   return result.rows[0];
 }

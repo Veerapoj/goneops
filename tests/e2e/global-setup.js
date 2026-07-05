@@ -14,7 +14,7 @@ module.exports = async () => {
 
   const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
   const projectName = `e2e-${suffix}`;
-  const projectResponse = await api.post('/api/projects', { data: { name: projectName } });
+  const projectResponse = await api.post('/api/projects', { data: { name: projectName, is_test: true } });
   if (projectResponse.status() !== 201) {
     throw new Error(`Unable to create E2E project: ${projectResponse.status()} ${await projectResponse.text()}`);
   }

@@ -23,15 +23,18 @@ const MAX_FILE_SIZE = 256 * 1024;
 
 // GET /api/projects
 router.get('/projects', async (req, res, next) => {
-  try { res.json(await listProjects()); } catch (e) { next(e); }
+  try {
+    const includeTest = req.query.include_test === 'true';
+    res.json(await listProjects(includeTest));
+  } catch (e) { next(e); }
 });
 
 // POST /api/projects
 router.post('/projects', async (req, res, next) => {
   try {
-    const { name } = req.body;
+    const { name, is_test } = req.body;
     if (!name) return res.status(400).json({ error: { code: 'validation_error', message: 'Project name required' } });
-    res.status(201).json(await createProject(name));
+    res.status(201).json(await createProject(name, !!is_test));
   } catch (e) { next(e); }
 });
 
