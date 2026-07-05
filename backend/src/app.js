@@ -4,6 +4,7 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const projectRoutes = require('./routes/projects');
 const inventoryRoutes = require('./routes/inventory');
+const inventoryMappingRoutes = require('./routes/inventoryMapping');
 const proxmoxRoutes = require('./routes/proxmox');
 
 const app = express();
@@ -19,6 +20,7 @@ app.get('/api/health', (req, res) => {
 
 app.use('/api', projectRoutes);
 app.use('/api', inventoryRoutes);
+app.use('/api/inventory', inventoryMappingRoutes);
 app.use('/api/proxmox', proxmoxRoutes);
 
 app.use((err, req, res, next) => {

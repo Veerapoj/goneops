@@ -222,6 +222,34 @@ ALTER TABLE environments ADD COLUMN IF NOT EXISTS lxc_node VARCHAR(255);
 ALTER TABLE environments ADD COLUMN IF NOT EXISTS lxc_provider_id INTEGER;
 ALTER TABLE environments ADD COLUMN IF NOT EXISTS lxc_ip VARCHAR(45);
 ALTER TABLE environments ADD COLUMN IF NOT EXISTS lxc_status VARCHAR(50) DEFAULT 'pending';
+
+ALTER TABLE vms ADD COLUMN IF NOT EXISTS application_id INTEGER REFERENCES applications(id) ON DELETE SET NULL;
+ALTER TABLE vms ADD COLUMN IF NOT EXISTS environment_id INTEGER REFERENCES environments(id) ON DELETE SET NULL;
+ALTER TABLE vms ADD COLUMN IF NOT EXISTS service_id INTEGER REFERENCES services(id) ON DELETE SET NULL;
+
+ALTER TABLE containers ADD COLUMN IF NOT EXISTS application_id INTEGER REFERENCES applications(id) ON DELETE SET NULL;
+ALTER TABLE containers ADD COLUMN IF NOT EXISTS environment_id INTEGER REFERENCES environments(id) ON DELETE SET NULL;
+ALTER TABLE containers ADD COLUMN IF NOT EXISTS service_id INTEGER REFERENCES services(id) ON DELETE SET NULL;
+
+CREATE INDEX IF NOT EXISTS idx_vms_application ON vms(application_id);
+CREATE INDEX IF NOT EXISTS idx_vms_environment ON vms(environment_id);
+CREATE INDEX IF NOT EXISTS idx_vms_service ON vms(service_id);
+CREATE INDEX IF NOT EXISTS idx_containers_application ON containers(application_id);
+CREATE INDEX IF NOT EXISTS idx_containers_environment ON containers(environment_id);
+CREATE INDEX IF NOT EXISTS idx_containers_service ON containers(service_id);
+
+CREATE TABLE IF NOT EXISTS asset_relationships (
+    id SERIAL PRIMARY KEY,
+    source_type VARCHAR(50) NOT NULL,
+    source_id INTEGER NOT NULL,
+    target_type VARCHAR(50) NOT NULL,
+    target_id INTEGER NOT NULL,
+    relationship_type VARCHAR(100) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT unique_asset_relationship UNIQUE (source_type, source_id, target_type, target_id, relationship_type)
+);
+CREATE INDEX IF NOT EXISTS idx_asset_rel_source ON asset_relationships(source_type, source_id);
+CREATE INDEX IF NOT EXISTS idx_asset_rel_target ON asset_relationships(target_type, target_id);
 `;
 
 async function ensureInventorySchema() {

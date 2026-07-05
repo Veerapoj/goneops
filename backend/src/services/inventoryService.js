@@ -286,6 +286,31 @@ async function getCapacity() {
   };
 }
 
+async function getPlatformOverview() {
+  const providers = await query('SELECT COUNT(*)::int AS count FROM providers');
+  const hosts = await query('SELECT COUNT(*)::int AS count FROM hosts');
+  const vms = await query('SELECT COUNT(*)::int AS count FROM vms');
+  const containers = await query('SELECT COUNT(*)::int AS count FROM containers');
+  const applications = await query('SELECT COUNT(*)::int AS count FROM applications');
+  const lastSync = await query(`
+    SELECT GREATEST(
+      COALESCE(MAX(sync_jobs.completed_at), '1970-01-01'::timestamptz),
+      COALESCE(MAX(proxmox_providers.last_synced_at), '1970-01-01'::timestamptz)
+    ) AS last_sync
+    FROM sync_jobs
+    FULL OUTER JOIN proxmox_providers ON true
+  `);
+
+  return {
+    providers: providers.rows[0]?.count || 0,
+    hosts: hosts.rows[0]?.count || 0,
+    vms: vms.rows[0]?.count || 0,
+    containers: containers.rows[0]?.count || 0,
+    applications: applications.rows[0]?.count || 0,
+    last_sync: lastSync.rows[0]?.last_sync || null,
+  };
+}
+
 module.exports = {
   getDashboardStats,
   listProviders,
@@ -297,4 +322,5 @@ module.exports = {
   listSyncJobs,
   getServiceMap,
   getCapacity,
+  getPlatformOverview,
 };

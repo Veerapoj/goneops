@@ -7,6 +7,7 @@ const { generateSandbox } = require('../sandbox/generator');
 const { runSandbox, stopSandbox, restartSandbox, getSandboxLogs, testApi } = require('../sandbox/runner');
 const { query } = require('../lib/db');
 const { requireRole, writeAuditLog } = require('../services/proxmoxService');
+const { writeAuditLog: audit } = require('../lib/audit');
 const fs = require('fs');
 const path = require('path');
 const ALLOWED_FILES = new Set([
@@ -80,8 +81,12 @@ router.post('/projects/:id/run', requireRole('operator'), async (req, res, next)
     const { environment_id } = req.body;
     if (!environment_id) return res.status(400).json({ error: { code: 'validation_error', message: 'environment_id required' } });
     const result = await runSandbox(req.params.id, environment_id);
+    await audit({ actor: req.goneopsActor || 'system', action: 'sandbox_run', resource_type: 'environment', resource_id: environment_id, result: 'success', message: `Sandbox run for project ${req.params.id} env ${environment_id}` });
     res.status(202).json(result);
-  } catch (e) { next(e); }
+  } catch (e) {
+    await audit({ actor: req.goneopsActor || 'system', action: 'sandbox_run', resource_type: 'environment', resource_id: req.body?.environment_id, result: 'failure', message: e.message }).catch(() => {});
+    next(e);
+  }
 });
 
 // POST /api/projects/:id/stop
@@ -89,8 +94,13 @@ router.post('/projects/:id/stop', requireRole('operator'), async (req, res, next
   try {
     const { environment_id } = req.body;
     if (!environment_id) return res.status(400).json({ error: { code: 'validation_error', message: 'environment_id required' } });
-    res.status(202).json(await stopSandbox(req.params.id, environment_id));
-  } catch (e) { next(e); }
+    const result = await stopSandbox(req.params.id, environment_id);
+    await audit({ actor: req.goneopsActor || 'system', action: 'sandbox_stop', resource_type: 'environment', resource_id: environment_id, result: 'success', message: `Sandbox stop for project ${req.params.id} env ${environment_id}` });
+    res.status(202).json(result);
+  } catch (e) {
+    await audit({ actor: req.goneopsActor || 'system', action: 'sandbox_stop', resource_type: 'environment', resource_id: req.body?.environment_id, result: 'failure', message: e.message }).catch(() => {});
+    next(e);
+  }
 });
 
 // POST /api/projects/:id/restart
@@ -99,8 +109,12 @@ router.post('/projects/:id/restart', requireRole('operator'), async (req, res, n
     const { environment_id } = req.body;
     if (!environment_id) return res.status(400).json({ error: { code: 'validation_error', message: 'environment_id required' } });
     const result = await restartSandbox(req.params.id, environment_id);
+    await audit({ actor: req.goneopsActor || 'system', action: 'sandbox_restart', resource_type: 'environment', resource_id: environment_id, result: 'success', message: `Sandbox restart for project ${req.params.id} env ${environment_id}` });
     res.status(202).json(result);
-  } catch (e) { next(e); }
+  } catch (e) {
+    await audit({ actor: req.goneopsActor || 'system', action: 'sandbox_restart', resource_type: 'environment', resource_id: req.body?.environment_id, result: 'failure', message: e.message }).catch(() => {});
+    next(e);
+  }
 });
 
 // POST /api/projects/:id/test-api
@@ -215,6 +229,7 @@ router.post('/projects/:id/services', async (req, res, next) => {
        RETURNING *`,
       [environment_id, name, type, port || 0, JSON.stringify(config || {})]
     );
+    await audit({ actor: req.goneopsActor || 'system', action: 'service_create', resource_type: 'service', resource_id: result.rows[0].id, result: 'success', message: `Service ${name} created in env ${environment_id}` });
     res.status(201).json(result.rows[0]);
   } catch (e) {
     if (e.code === '23505') return res.status(409).json({ error: { code: 'duplicate', message: `Service "${req.body.name}" already exists in this environment` } });
@@ -336,6 +351,7 @@ router.post('/projects/:id/secrets', async (req, res, next) => {
       [req.params.id, environment_id, key, value]
     );
     const { value: _value, ...secret } = result.rows[0];
+    await audit({ actor: req.goneopsActor || 'system', action: 'secret_create', resource_type: 'secret', resource_id: result.rows[0].id, result: 'success', message: `Secret ${key} created for env ${environment_id}` });
     res.status(201).json({ ...secret, value: '••••••••' });
   } catch (e) { next(e); }
 });
@@ -356,6 +372,7 @@ router.delete('/projects/:id/secrets/:key', async (req, res, next) => {
       [environment_id, req.params.id, req.params.key]
     );
     if (!result.rows.length) return res.status(404).json({ error: { code: 'not_found', message: 'Secret not found' } });
+    await audit({ actor: req.goneopsActor || 'system', action: 'secret_delete', resource_type: 'secret', resource_id: result.rows[0].id, result: 'success', message: `Secret ${req.params.key} deleted from env ${environment_id}` });
     res.json({ deleted: true });
   } catch (e) { next(e); }
 });
@@ -418,6 +435,93 @@ router.post('/projects/:id/cleanup-stale', requireRole('admin'), async (req, res
     }
 
     res.json({ cleaned: results.length, results });
+  } catch (e) { next(e); }
+});
+
+// PUT /api/projects/:id/services/:serviceId
+router.put('/projects/:id/services/:serviceId', async (req, res, next) => {
+  try {
+    const { environment_id, name, type, port, config } = req.body;
+    if (!environment_id) return res.status(400).json({ error: { code: 'validation_error', message: 'environment_id required' } });
+    const env = await query(
+      'SELECT id FROM environments WHERE id = $1 AND project_id = $2',
+      [environment_id, req.params.id]
+    );
+    if (!env.rows.length) return res.status(404).json({ error: { code: 'not_found', message: 'Environment not found' } });
+    const existing = await query(
+      'SELECT * FROM services WHERE id = $1 AND environment_id = $2',
+      [req.params.serviceId, environment_id]
+    );
+    if (!existing.rows.length) return res.status(404).json({ error: { code: 'not_found', message: 'Service not found' } });
+    const updates = [];
+    const values = [];
+    let idx = 1;
+    if (name !== undefined) { updates.push(`name = $${idx++}`); values.push(name); }
+    if (type !== undefined) { updates.push(`type = $${idx++}`); values.push(type); }
+    if (port !== undefined) { updates.push(`port = $${idx++}`); values.push(port); }
+    if (config !== undefined) { updates.push(`config = $${idx++}`); values.push(JSON.stringify(config)); }
+    updates.push(`updated_at = NOW()`);
+    values.push(req.params.serviceId);
+    const result = await query(
+      `UPDATE services SET ${updates.join(', ')} WHERE id = $${idx} RETURNING *`,
+      values
+    );
+    await audit({ actor: req.goneopsActor || 'system', action: 'service_update', resource_type: 'service', resource_id: result.rows[0].id, result: 'success', message: `Service ${result.rows[0].name} updated in env ${environment_id}` });
+    res.json(result.rows[0]);
+  } catch (e) {
+    if (e.code === '23505') return res.status(409).json({ error: { code: 'duplicate', message: 'Service name conflict' } });
+    next(e);
+  }
+});
+
+// DELETE /api/projects/:id/services/:serviceId
+router.delete('/projects/:id/services/:serviceId', async (req, res, next) => {
+  try {
+    const { environment_id } = req.query;
+    if (!environment_id) return res.status(400).json({ error: { code: 'validation_error', message: 'environment_id query param required' } });
+    const existing = await query(
+      'SELECT s.* FROM services s JOIN environments e ON s.environment_id = e.id WHERE s.id = $1 AND e.project_id = $2 AND s.environment_id = $3',
+      [req.params.serviceId, req.params.id, environment_id]
+    );
+    if (!existing.rows.length) return res.status(404).json({ error: { code: 'not_found', message: 'Service not found' } });
+    await query('DELETE FROM services WHERE id = $1', [req.params.serviceId]);
+    await audit({ actor: req.goneopsActor || 'system', action: 'service_delete', resource_type: 'service', resource_id: req.params.serviceId, result: 'success', message: `Service ${existing.rows[0].name} deleted from env ${environment_id}` });
+    res.json({ deleted: true });
+  } catch (e) { next(e); }
+});
+
+// GET /api/projects/:id/runtime
+router.get('/projects/:id/runtime', async (req, res, next) => {
+  try {
+    const runtime = await query(`
+      SELECT
+        s.id AS service_id,
+        s.name AS service_name,
+        s.type AS service_type,
+        s.status AS service_status,
+        e.id AS environment_id,
+        e.name AS environment_name,
+        pr.name AS provider_name,
+        pr.type AS provider_type,
+        h.hostname AS host,
+        COALESCE(v.name, c.name) AS vm_name,
+        v.vmid AS vm_vmid,
+        v.ip_address AS vm_ip,
+        v.status AS vm_status,
+        c.name AS container_name,
+        c.container_id,
+        c.status AS container_status
+      FROM services s
+      JOIN environments e ON e.id = s.environment_id
+      LEFT JOIN applications a ON a.project_id = e.project_id
+      LEFT JOIN containers c ON c.environment_id = e.id
+      LEFT JOIN providers pr ON (c.provider_id = pr.id OR e.lxc_provider_id = pr.id)
+      LEFT JOIN hosts h ON (c.host_id = h.id OR h.provider_id = pr.id)
+      LEFT JOIN vms v ON v.provider_id = pr.id AND (e.lxc_vmid IS NOT NULL AND v.vmid = e.lxc_vmid::text)
+      WHERE e.project_id = $1
+      ORDER BY s.id
+    `, [req.params.id]);
+    res.json({ services: runtime.rows });
   } catch (e) { next(e); }
 });
 

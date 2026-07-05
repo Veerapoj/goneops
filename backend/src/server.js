@@ -6,6 +6,7 @@ const { createMQClient } = require('./lib/mq');
 const { handleTerminal } = require('./routes/terminal');
 const { reconcileOnStartup } = require('./operations/reconciler');
 const { ensureInventorySchema } = require('./services/inventorySchema');
+const { runBackfill } = require('./services/inventoryBackfill');
 
 const PORT = process.env.PORT || 4000;
 
@@ -13,6 +14,7 @@ async function main() {
   try {
     await createPool();
     await ensureInventorySchema();
+    await runBackfill();
     console.log('[goneops] PostgreSQL connected');
   } catch (err) {
     console.error('[goneops] PostgreSQL connection failed, retrying...', err.message);

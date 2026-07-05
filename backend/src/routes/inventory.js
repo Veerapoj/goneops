@@ -11,6 +11,7 @@ const {
   listSyncJobs,
   getServiceMap,
   getCapacity,
+  getPlatformOverview,
 } = require('../services/inventoryService');
 
 router.get('/platform/dashboard', async (req, res, next) => {
@@ -80,6 +81,14 @@ router.get('/platform/service-map', async (req, res, next) => {
 router.get('/platform/capacity', async (req, res, next) => {
   try {
     res.json(await getCapacity());
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.get('/platform/overview', async (req, res, next) => {
+  try {
+    res.json(await getPlatformOverview());
   } catch (e) {
     next(e);
   }

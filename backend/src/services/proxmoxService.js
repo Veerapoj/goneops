@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const { query } = require('../lib/db');
 const proxmoxClient = require('../lib/proxmoxClient');
+const { writeAuditLog } = require('../lib/audit');
 
 const ENC_ALGO = 'aes-256-gcm';
 
@@ -46,15 +47,6 @@ function buildClientFromProvider(provider) {
     tokenSecret: secret,
     verifySsl: provider.verify_ssl,
   });
-}
-
-async function writeAuditLog({ actor, action, resource_type, resource_id, provider_id, result, message, metadata }) {
-  const res = await query(
-    `INSERT INTO audit_logs (actor, action, resource_type, resource_id, provider_id, result, message, metadata)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
-    [actor || 'system', action, resource_type || null, resource_id || null, provider_id || null, result, message || null, metadata ? JSON.stringify(metadata) : '{}']
-  );
-  return res.rows[0];
 }
 
 async function createProvider({ name, host, port, token_user, token_id, token_secret }) {

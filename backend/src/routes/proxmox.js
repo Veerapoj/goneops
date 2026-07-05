@@ -25,6 +25,39 @@ const {
   rejectRequest,
   listTasks,
 } = require('../services/proxmoxService');
+const { query } = require('../lib/db');
+
+async function resolveProviderId(providedId) {
+  if (providedId) return parseInt(providedId, 10);
+  const res = await query('SELECT id FROM proxmox_providers ORDER BY id');
+  if (res.rows.length === 0) {
+    const err = new Error('No Proxmox providers configured');
+    err.status = 400;
+    err.code = 'validation_error';
+    throw err;
+  }
+  if (res.rows.length > 1) {
+    const err = new Error('Multiple providers exist — provider_id is required');
+    err.status = 400;
+    err.code = 'validation_error';
+    throw err;
+  }
+  return res.rows[0].id;
+}
+
+router.get('/nodes', async (req, res, next) => {
+  try {
+    const id = await resolveProviderId(req.query.provider_id);
+    res.json(await listNodes(id));
+  } catch (e) { next(e); }
+});
+
+router.get('/vms', async (req, res, next) => {
+  try {
+    const id = await resolveProviderId(req.query.provider_id);
+    res.json(await listVMs(id));
+  } catch (e) { next(e); }
+});
 
 router.post('/providers', requireRole('operator'), async (req, res, next) => {
   try {

@@ -1,25 +1,25 @@
 {
   "project": {
-    "id": 147,
-    "name": "e2e-1783189554522-d4wwl",
-    "created_at": "2026-07-04T18:25:54.529Z",
-    "updated_at": "2026-07-04T18:25:54.529Z"
+    "id": 52,
+    "name": "e2e-1783189963255-fhwml",
+    "created_at": "2026-07-04T18:32:43.263Z",
+    "updated_at": "2026-07-04T18:32:43.263Z"
   },
   "environment": {
-    "id": 145,
-    "project_id": 147,
+    "id": 44,
+    "project_id": 52,
     "name": "dev",
     "resource_prefix": null,
     "status": "stopped",
     "preview_url": "",
     "working_dir": "",
-    "created_at": "2026-07-04T18:25:54.544Z",
-    "updated_at": "2026-07-04T18:25:54.544Z",
+    "created_at": "2026-07-04T18:32:43.274Z",
+    "updated_at": "2026-07-04T18:32:43.274Z",
     "lxc_vmid": null,
     "lxc_node": null,
     "lxc_provider_id": null,
     "lxc_ip": null,
     "lxc_status": "pending"
   },
-  "projectName": "e2e-1783189554522-d4wwl"
+  "projectName": "e2e-1783189963255-fhwml"
 }
