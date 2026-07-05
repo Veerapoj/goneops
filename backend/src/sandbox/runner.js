@@ -1,4 +1,4 @@
-const { preflightCheck, pctExec, bootstrapLxc, getLxcIp } = require('./remoteExec');
+const { preflightCheck } = require('./remoteExec');
 const { query } = require('../lib/db');
 const { updateEnvironmentStatus } = require('../services/environmentService');
 
@@ -65,50 +65,56 @@ async function runSandbox(projectId, environmentId) {
   );
   if (!env.rows.length) throw Object.assign(new Error('Environment not found'), { status: 404, code: 'not_found' });
 
-  const workingDir = env.rows[0].working_dir;
-  if (!workingDir) throw Object.assign(new Error('No sandbox generated. Run generate-sandbox first.'), { status: 400, code: 'validation_error' });
-
   const check = await preflightCheck();
   if (!check.available) {
     throw Object.assign(new Error('Proxmox LXC provider unreachable'), { status: 503, code: 'proxmox_unavailable', details: { error: check.error } });
   }
 
+  const project = await query('SELECT * FROM projects WHERE id = $1', [projectId]);
+  const projectName = project.rows[0]?.name || `project-${projectId}`;
+
   await claimTransitionalState(environmentId, projectId, 'starting', ['stopped', 'failed']);
 
   setImmediate(async () => {
     try {
-      const lxc = await ensureLxcReady(environmentId, workingDir);
-
-      const composeDir = lxc.workingDir || workingDir;
-      const remoteSandboxDir = composeDir.startsWith('/opt/') ? composeDir : '/opt/sandbox';
-
-      try {
-        await pctExec(lxc.vmid, `cd '${remoteSandboxDir}' && docker compose up -d --wait --build`);
-      } catch (upErr) {
-        console.error(`[runner] up failed: ${upErr.message}`);
-        await updateEnvironmentStatus(environmentId, 'failed', null);
-        return;
-      }
-
-      const ports = await query(
-        'SELECT host_port FROM sandbox_ports WHERE environment_id = $1 AND role = $2',
-        [environmentId, 'web']
-      );
-      const lxcIp = lxc.ip;
-      const webPort = ports.rows.length ? ports.rows[0].host_port : null;
-      const previewUrl = lxcIp && webPort ? `http://${lxcIp}:${webPort}` : (webPort ? `http://${PUBLIC_HOST}:${webPort}` : '');
-      await updateEnvironmentStatus(environmentId, 'running', previewUrl);
-      await query(
-        "UPDATE services SET status = 'healthy' WHERE environment_id = $1",
+      const services = await query(
+        `SELECT s.* FROM services s WHERE s.environment_id = $1 ORDER BY s.id`,
         [environmentId]
       );
+
+      const { dockerRun, dockerRm } = require('./remoteExec');
+      let deployedCount = 0;
+
+      for (const svc of services.rows) {
+        const containerName = `${projectName}-${svc.name}`.replace(/[^a-zA-Z0-9_-]/g, '-');
+        const image = svc.config?.image || 'nginx:alpine';
+        const port = svc.port || 80;
+        const hostPort = 10000 + svc.id;
+
+        try {
+          await dockerRm(containerName).catch(() => {});
+          const result = await dockerRun(image, containerName, {
+            'goneops.project': projectName,
+            'goneops.env': env.rows[0].name,
+            'goneops.service': svc.name,
+          }, [`${hostPort}:${port}`]);
+          deployedCount++;
+          console.log(`[runner] deployed ${containerName} on PVE host, container=${result.trim().slice(0, 12)}`);
+        } catch (svcErr) {
+          console.error(`[runner] deploy failed for ${svc.name}: ${svcErr.message}`);
+        }
+      }
+
+      await query("UPDATE services SET status = 'healthy' WHERE environment_id = $1", [environmentId]);
+      const previewUrl = `http://${PUBLIC_HOST}:${10000 + (services.rows[0]?.id || 0)}`;
+      await updateEnvironmentStatus(environmentId, 'running', previewUrl);
     } catch (err) {
       await updateEnvironmentStatus(environmentId, 'failed', null);
       console.error(`[runner] async start error: ${err.message}`);
     }
   });
 
-  return { environment_id: environmentId, status: 'starting', message: 'Sandbox start initiated' };
+  return { environment_id: environmentId, status: 'starting', message: 'Deploying services to Proxmox host' };
 }
 
 async function stopSandbox(projectId, environmentId) {
@@ -118,25 +124,31 @@ async function stopSandbox(projectId, environmentId) {
   );
   if (!env.rows.length) throw Object.assign(new Error('Environment not found'), { status: 404, code: 'not_found' });
 
-  const row = env.rows[0];
-  const workingDir = row.working_dir;
-  if (!workingDir) throw Object.assign(new Error('No sandbox directory found'), { status: 400, code: 'validation_error' });
-  if (!row.lxc_vmid) {
-    throw Object.assign(new Error('No LXC provisioned for this sandbox'), { status: 400, code: 'validation_error' });
-  }
-
   const check = await preflightCheck();
   if (!check.available) {
     throw Object.assign(new Error('Proxmox LXC provider unreachable'), { status: 503, code: 'proxmox_unavailable', details: { error: check.error } });
   }
 
+  const project = await query('SELECT * FROM projects WHERE id = $1', [projectId]);
+  const projectName = project.rows[0]?.name || `project-${projectId}`;
+
   await claimTransitionalState(environmentId, projectId, 'stopping', ['running', 'failed', 'starting']);
   setImmediate(async () => {
     try {
-      const composeDir = row.working_dir.startsWith('/opt/') ? row.working_dir : '/opt/sandbox';
-      await pctExec(row.lxc_vmid, `cd '${composeDir}' && docker compose down`);
+      const services = await query(
+        `SELECT s.* FROM services s WHERE s.environment_id = $1 ORDER BY s.id`,
+        [environmentId]
+      );
+      const { dockerStop, dockerRm } = require('./remoteExec');
+      for (const svc of services.rows) {
+        const containerName = `${projectName}-${svc.name}`.replace(/[^a-zA-Z0-9_-]/g, '-');
+        try {
+          await dockerStop(containerName).catch(() => {});
+          await dockerRm(containerName).catch(() => {});
+        } catch (_) {}
+      }
     } catch (err) {
-      console.error(`[runner] down failed: ${err.message}`);
+      console.error(`[runner] stop failed: ${err.message}`);
     }
     await updateEnvironmentStatus(environmentId, 'stopped', null);
     await query(
