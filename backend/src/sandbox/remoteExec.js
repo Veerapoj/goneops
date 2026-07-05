@@ -104,4 +104,43 @@ async function getLxcIp(vmid) {
   }
 }
 
-module.exports = { preflightCheck, pctExec, pctPush, bootstrapLxc, getLxcIp };
+async function dockerExec(command, options = {}) {
+  if (!PVE_SSH_HOST) {
+    throw Object.assign(new Error('PVE_SSH_HOST not configured'), { status: 503, code: 'proxmox_unavailable' });
+  }
+  const result = await execSsh(['docker', command], options);
+  if (result.error) {
+    const err = new Error(result.stderr || result.error.message);
+    err.status = 503;
+    err.code = 'docker_exec_error';
+    err.stdout = result.stdout;
+    err.stderr = result.stderr;
+    throw err;
+  }
+  return result.stdout;
+}
+
+async function dockerPs(format = 'json') {
+  const output = await dockerExec('ps --format json');
+  const lines = output.trim().split('\n').filter(Boolean);
+  return lines.map((line) => {
+    try { return JSON.parse(line); } catch { return null; }
+  }).filter(Boolean);
+}
+
+async function dockerRun(image, name, labels = {}, ports = [], extraArgs = '') {
+  const labelArgs = Object.entries(labels).map(([k, v]) => `-l ${k}=${v}`).join(' ');
+  const portArgs = ports.map((p) => `-p ${p}`).join(' ');
+  const cmd = `run -d --name ${name} ${labelArgs} ${portArgs} ${extraArgs} ${image}`;
+  return dockerExec(cmd.trim());
+}
+
+async function dockerStop(name) {
+  return dockerExec(`stop ${name}`);
+}
+
+async function dockerRm(name) {
+  return dockerExec(`rm -f ${name}`);
+}
+
+module.exports = { preflightCheck, pctExec, pctPush, bootstrapLxc, getLxcIp, dockerExec, dockerPs, dockerRun, dockerStop, dockerRm };

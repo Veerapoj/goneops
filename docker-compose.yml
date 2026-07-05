@@ -39,6 +39,7 @@ services:
       - PVE_SSH_USER=root
       - PVE_SSH_KEY=/ssh-key/id_ed25519_pve
       - PVE_SSH_PORT=22
+      - GONEOPS_DOCKER_HOST_VMID=100
     volumes:
       - /home/veenews/.ssh/id_ed25519_pve:/ssh-key/id_ed25519_pve:ro
       - goneops_sandboxes:/tmp/goneops-sandboxes

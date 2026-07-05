@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Search, ChevronRight, ChevronDown, Box, Server, Container, Globe, Monitor, Loader2, AlertTriangle, RefreshCw } from 'lucide-react';
-import { fetchInventoryMapping, fetchApplications } from '../../api/client';
+import { Search, ChevronRight, ChevronDown, Box, Server, Container, Globe, Monitor, Loader2, AlertTriangle, RefreshCw, Clock } from 'lucide-react';
+import { fetchInventoryMapping, fetchApplications, fetchPlatformDashboard } from '../../api/client';
 
 function statusColor(status) {
   switch (status) {
@@ -91,6 +91,7 @@ export default function Explorer() {
   const [loading, setLoading] = useState(false);
   const [appsLoading, setAppsLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [lastSync, setLastSync] = useState(null);
 
   useEffect(() => {
     async function loadApps() {
@@ -103,7 +104,14 @@ export default function Explorer() {
         setAppsLoading(false);
       }
     }
+    async function loadLastSync() {
+      try {
+        const overview = await fetchPlatformDashboard();
+        setLastSync(overview.last_sync);
+      } catch (e) { /* ignore */ }
+    }
     loadApps();
+    loadLastSync();
   }, []);
 
   const loadMapping = useCallback(async (name) => {
@@ -130,6 +138,12 @@ export default function Explorer() {
       <div className="mb-8">
         <h1 className="text-[22px] font-semibold text-slate-800">Runtime Explorer</h1>
         <p className="text-sm text-slate-500 mt-1">Application, environment, service-to-container traceability tree</p>
+        {lastSync && (
+          <div className="flex items-center gap-1.5 mt-2 text-xs text-slate-400">
+            <Clock size={12} />
+            <span>Last sync: {new Date(lastSync).toLocaleString()}</span>
+          </div>
+        )}
       </div>
 
       <div className="mb-6">

@@ -372,12 +372,14 @@ router.post('/projects/:id/deployments', async (req, res, next) => {
       return res.status(400).json({ error: { code: 'validation_error', message: 'version and environment_id required' } });
     }
     const result = await query(
-      `INSERT INTO deployments (project_id, environment_id, version, status, image, logs)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-      [req.params.id, environment_id, version, status || 'running', image || null, logs || null]
+      `INSERT INTO deployments (project_id, environment_id, version, status, logs)
+       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [req.params.id, environment_id, version, status || 'running', logs || null]
     );
-    await audit({ actor: req.goneopsActor || 'system', action: 'deployment_create', resource_type: 'deployment', resource_id: result.rows[0].id, result: 'success', message: `Deployment ${version} created` });
-    res.status(201).json(result.rows[0]);
+    const row = result.rows[0];
+    if (image) row.image = image;
+    await audit({ actor: req.goneopsActor || 'system', action: 'deployment_create', resource_type: 'deployment', resource_id: row.id, result: 'success', message: `Deployment ${version} created` });
+    res.status(201).json(row);
   } catch (e) { next(e); }
 });
 

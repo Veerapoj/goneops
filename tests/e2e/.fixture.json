@@ -1,22 +1,22 @@
 {
   "project": {
-    "id": 154,
-    "name": "e2e-1783232895022-gcl9d",
-    "created_at": "2026-07-05T06:28:15.055Z",
-    "updated_at": "2026-07-05T06:28:15.055Z",
-    "data_source": "seed",
-    "is_test": true
+    "id": 62,
+    "name": "e2e-1783270968877-ilgge",
+    "created_at": "2026-07-05T17:02:48.905Z",
+    "updated_at": "2026-07-05T17:02:48.905Z",
+    "is_test": true,
+    "data_source": "sandbox"
   },
   "environment": {
-    "id": 152,
-    "project_id": 154,
+    "id": 52,
+    "project_id": 62,
     "name": "dev",
     "resource_prefix": null,
     "status": "stopped",
     "preview_url": "",
     "working_dir": "",
-    "created_at": "2026-07-05T06:28:15.070Z",
-    "updated_at": "2026-07-05T06:28:15.070Z",
+    "created_at": "2026-07-05T17:02:48.939Z",
+    "updated_at": "2026-07-05T17:02:48.939Z",
     "lxc_vmid": null,
     "lxc_node": null,
     "lxc_provider_id": null,
@@ -24,5 +24,5 @@
     "lxc_status": "pending",
     "data_source": "seed"
   },
-  "projectName": "e2e-1783232895022-gcl9d"
+  "projectName": "e2e-1783270968877-ilgge"
 }

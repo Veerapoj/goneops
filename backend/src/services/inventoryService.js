@@ -92,15 +92,19 @@ async function listVMs() {
   return result.rows;
 }
 
-async function listContainers() {
-  const result = await query(`
+async function listContainers(unmappedOnly = false) {
+  let sql = `
     SELECT c.*, h.hostname AS host_name, p.name AS provider_name
     FROM containers c
     LEFT JOIN hosts h ON h.id = c.host_id AND h.data_source = 'discovered'
     LEFT JOIN providers p ON p.id = c.provider_id AND p.data_source = 'discovered'
     WHERE c.data_source = 'discovered'
-    ORDER BY c.name
-  `);
+  `;
+  if (unmappedOnly) {
+    sql += ' AND c.application_id IS NULL';
+  }
+  sql += ' ORDER BY c.name';
+  const result = await query(sql);
   return result.rows;
 }
 
@@ -323,35 +327,10 @@ async function getPlatformOverview() {
 }
 
 async function getRuntimeHealth() {
-  const dockerHostVmid = await (async () => {
-    const linked = await query(`
-      SELECT e.lxc_vmid FROM containers c
-      JOIN environments e ON e.id = c.environment_id
-      WHERE c.data_source = 'discovered' AND e.lxc_vmid IS NOT NULL
-      LIMIT 1
-    `);
-    if (linked.rows.length > 0) return linked.rows[0].lxc_vmid;
-    const envVar = process.env.GONEOPS_DOCKER_HOST_VMID;
-    if (envVar) return parseInt(envVar);
-    return null;
-  })();
+  const { dockerPs } = require('../sandbox/remoteExec');
+  const containers = await dockerPs();
 
-  if (!dockerHostVmid) {
-    return [];
-  }
-
-  const { pctExec } = require('../sandbox/remoteExec');
-  const stdout = await pctExec(dockerHostVmid, "docker ps --format '{{json .}}'");
-
-  const lines = stdout.trim().split('\n').filter(Boolean);
-  const containers = [];
-  for (const line of lines) {
-    try {
-      containers.push(JSON.parse(line));
-    } catch {
-      continue;
-    }
-  }
+  if (!containers.length) return [];
 
   const containerIds = containers.map((c) => c.ID).filter(Boolean);
   if (containerIds.length === 0) return [];
@@ -369,9 +348,35 @@ async function getRuntimeHealth() {
     idMap[row.container_id] = row;
   }
 
+  const labelMap = {};
+  for (const row of dbContainers.rows) {
+    if (row.service_name) {
+      labelMap[row.name] = row;
+    }
+  }
+
   const results = [];
   for (const c of containers) {
-    const db = idMap[c.ID];
+    let db = idMap[c.ID];
+
+    if (!db) {
+      const labels = c.Labels || '';
+      const project = String(labels).match(/goneops\.project=([^,]+)/)?.[1];
+      const service = String(labels).match(/goneops\.service=([^,]+)/)?.[1];
+      if (project && service) {
+        const labelMatch = await query(
+          `SELECT c.id, c.container_id, c.name, c.service_id, s.name AS service_name
+           FROM containers c
+           LEFT JOIN services s ON s.id = c.service_id
+           WHERE c.name = $1 AND c.data_source = 'discovered'
+           LIMIT 1`,
+          [c.Names || c.Name || '']
+        );
+        if (labelMatch.rows.length > 0) {
+          db = labelMatch.rows[0];
+        }
+      }
+    }
     let healthStatus = 'unknown';
     const dockerStatus = c.Status || c.State || '';
 

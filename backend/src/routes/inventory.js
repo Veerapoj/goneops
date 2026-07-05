@@ -43,7 +43,8 @@ router.get('/platform/hosts', async (req, res, next) => {
 
 router.get('/platform/containers', async (req, res, next) => {
   try {
-    res.json(await listContainers());
+    const unmapped = req.query.unmapped === 'true';
+    res.json(await listContainers(unmapped));
   } catch (e) {
     next(e);
   }
