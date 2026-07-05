@@ -4,7 +4,7 @@ import { useState } from 'react';
 import {
   LayoutDashboard, Plug, RefreshCw, Server, Container, Boxes,
   GitGraph, HardDrive, Cpu, Shield, History, Settings, Globe,
-  Copy, ListChecks,
+  Copy, ListChecks, Search, Link,
 } from 'lucide-react';
 
 const platformNavGroups = [
@@ -33,6 +33,8 @@ const platformNavGroups = [
     label: 'MAPPING',
     items: [
       { to: '/platform/mapping', label: 'Service Map', icon: GitGraph },
+      { to: '/platform/explorer', label: 'Runtime Explorer', icon: Search },
+      { to: '/platform/unmapped', label: 'Unmapped Assets', icon: Link },
     ],
   },
   {
@@ -40,6 +42,7 @@ const platformNavGroups = [
     items: [
       { to: '/platform/operations', label: 'Operations', icon: HardDrive },
       { to: '/platform/capacity', label: 'Capacity', icon: Cpu },
+      { to: '/platform/deployments', label: 'Deployments', icon: Globe },
     ],
   },
   {

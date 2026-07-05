@@ -318,4 +318,28 @@ export async function fetchCapacity() {
   return data;
 }
 
+export async function fetchInventoryMapping(appName) {
+  const { data } = await client.get(`/inventory/mapping/${appName}`);
+  return data;
+}
+
+export async function fetchRuntimeHealth() {
+  const { data } = await client.get('/platform/runtime-health');
+  return data;
+}
+
+export async function linkContainer(containerId, applicationId, environmentId, serviceId) {
+  const { data } = await client.post(`/platform/containers/${containerId}/link`, {
+    application_id: applicationId,
+    environment_id: environmentId,
+    service_id: serviceId,
+  });
+  return data;
+}
+
+export async function fetchUnmappedContainers() {
+  const { data } = await client.get('/platform/containers', { params: { unmapped: true } });
+  return data;
+}
+
 export default client;

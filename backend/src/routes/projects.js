@@ -306,16 +306,61 @@ router.get('/projects/:id/deployments', async (req, res, next) => {
     let rows;
     if (environment_id) {
       rows = await query(
-        'SELECT * FROM deployments WHERE project_id = $1 AND environment_id = $2 ORDER BY created_at DESC',
+        `SELECT d.*,
+          c.id AS runtime_container_id, c.name AS runtime_container_name, c.container_id AS runtime_container_cid, c.status AS runtime_container_status, c.image AS runtime_container_image,
+          v.id AS runtime_vm_id, v.name AS runtime_vm_name, v.vmid AS runtime_vm_vmid, v.status AS runtime_vm_status, v.ip_address AS runtime_vm_ip,
+          h.id AS runtime_host_id, h.hostname AS runtime_host_name, h.ip_address AS runtime_host_ip, h.status AS runtime_host_status,
+          pr.id AS runtime_provider_id, pr.name AS runtime_provider_name, pr.type AS runtime_provider_type, pr.status AS runtime_provider_status
+        FROM deployments d
+        LEFT JOIN environments e ON e.id = d.environment_id
+        LEFT JOIN containers c ON c.environment_id = e.id AND c.data_source = 'discovered'
+        LEFT JOIN vms v ON v.environment_id = e.id AND v.data_source = 'discovered'
+        LEFT JOIN providers pr ON (pr.id = c.provider_id OR pr.id = v.provider_id OR pr.id = e.lxc_provider_id) AND pr.data_source = 'discovered'
+        LEFT JOIN hosts h ON (h.id = c.host_id OR h.id = v.host_id OR h.provider_id = pr.id) AND h.data_source = 'discovered'
+        WHERE d.project_id = $1 AND d.environment_id = $2
+        ORDER BY d.created_at DESC`,
         [req.params.id, environment_id]
       );
     } else {
       rows = await query(
-        'SELECT * FROM deployments WHERE project_id = $1 ORDER BY created_at DESC',
+        `SELECT d.*,
+          c.id AS runtime_container_id, c.name AS runtime_container_name, c.container_id AS runtime_container_cid, c.status AS runtime_container_status, c.image AS runtime_container_image,
+          v.id AS runtime_vm_id, v.name AS runtime_vm_name, v.vmid AS runtime_vm_vmid, v.status AS runtime_vm_status, v.ip_address AS runtime_vm_ip,
+          h.id AS runtime_host_id, h.hostname AS runtime_host_name, h.ip_address AS runtime_host_ip, h.status AS runtime_host_status,
+          pr.id AS runtime_provider_id, pr.name AS runtime_provider_name, pr.type AS runtime_provider_type, pr.status AS runtime_provider_status
+        FROM deployments d
+        LEFT JOIN environments e ON e.id = d.environment_id
+        LEFT JOIN containers c ON c.environment_id = e.id AND c.data_source = 'discovered'
+        LEFT JOIN vms v ON v.environment_id = e.id AND v.data_source = 'discovered'
+        LEFT JOIN providers pr ON (pr.id = c.provider_id OR pr.id = v.provider_id OR pr.id = e.lxc_provider_id) AND pr.data_source = 'discovered'
+        LEFT JOIN hosts h ON (h.id = c.host_id OR h.id = v.host_id OR h.provider_id = pr.id) AND h.data_source = 'discovered'
+        WHERE d.project_id = $1
+        ORDER BY d.created_at DESC`,
         [req.params.id]
       );
     }
-    res.json({ deployments: rows.rows });
+    const deployments = rows.rows.map((row) => {
+      const { runtime_container_id, runtime_container_name, runtime_container_cid, runtime_container_status, runtime_container_image,
+        runtime_vm_id, runtime_vm_name, runtime_vm_vmid, runtime_vm_status, runtime_vm_ip,
+        runtime_host_id, runtime_host_name, runtime_host_ip, runtime_host_status,
+        runtime_provider_id, runtime_provider_name, runtime_provider_type, runtime_provider_status,
+        ...deployment } = row;
+      const runtime = {};
+      if (runtime_container_id) {
+        runtime.container = { id: runtime_container_id, name: runtime_container_name, container_id: runtime_container_cid, status: runtime_container_status, image: runtime_container_image };
+      }
+      if (runtime_vm_id) {
+        runtime.vm = { id: runtime_vm_id, name: runtime_vm_name, vmid: runtime_vm_vmid, status: runtime_vm_status, ip: runtime_vm_ip };
+      }
+      if (runtime_host_id) {
+        runtime.host = { id: runtime_host_id, hostname: runtime_host_name, ip: runtime_host_ip, status: runtime_host_status };
+      }
+      if (runtime_provider_id) {
+        runtime.provider = { id: runtime_provider_id, name: runtime_provider_name, type: runtime_provider_type, status: runtime_provider_status };
+      }
+      return { ...deployment, runtime };
+    });
+    res.json({ deployments });
   } catch (e) { next(e); }
 });
 

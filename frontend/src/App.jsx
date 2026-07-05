@@ -22,6 +22,9 @@ import Hosts from './pages/platform/Hosts';
 import Containers from './pages/platform/Containers';
 import Applications from './pages/platform/Applications';
 import ServiceMap from './pages/platform/ServiceMap';
+import Explorer from './pages/platform/Explorer';
+import UnmappedAssets from './pages/platform/UnmappedAssets';
+import DeploymentTimeline from './pages/platform/DeploymentTimeline';
 import Operations from './pages/platform/Operations';
 import Capacity from './pages/platform/Capacity';
 import Governance from './pages/platform/Governance';
@@ -63,6 +66,9 @@ export default function App() {
           <Route path="platform/containers" element={<Containers />} />
           <Route path="platform/applications" element={<Applications />} />
           <Route path="platform/mapping" element={<ServiceMap />} />
+          <Route path="platform/explorer" element={<Explorer />} />
+          <Route path="platform/unmapped" element={<UnmappedAssets />} />
+          <Route path="platform/deployments" element={<DeploymentTimeline />} />
           <Route path="platform/operations" element={<Operations />} />
           <Route path="platform/capacity" element={<Capacity />} />
           <Route path="platform/governance" element={<Governance />} />

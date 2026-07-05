@@ -322,6 +322,100 @@ async function getPlatformOverview() {
   };
 }
 
+async function getRuntimeHealth() {
+  const dockerHostVmid = await (async () => {
+    const linked = await query(`
+      SELECT e.lxc_vmid FROM containers c
+      JOIN environments e ON e.id = c.environment_id
+      WHERE c.data_source = 'discovered' AND e.lxc_vmid IS NOT NULL
+      LIMIT 1
+    `);
+    if (linked.rows.length > 0) return linked.rows[0].lxc_vmid;
+    const envVar = process.env.GONEOPS_DOCKER_HOST_VMID;
+    if (envVar) return parseInt(envVar);
+    return null;
+  })();
+
+  if (!dockerHostVmid) {
+    return [];
+  }
+
+  const { pctExec } = require('../sandbox/remoteExec');
+  const stdout = await pctExec(dockerHostVmid, "docker ps --format '{{json .}}'");
+
+  const lines = stdout.trim().split('\n').filter(Boolean);
+  const containers = [];
+  for (const line of lines) {
+    try {
+      containers.push(JSON.parse(line));
+    } catch {
+      continue;
+    }
+  }
+
+  const containerIds = containers.map((c) => c.ID).filter(Boolean);
+  if (containerIds.length === 0) return [];
+
+  const dbContainers = await query(
+    `SELECT c.id, c.container_id, c.name, c.service_id, s.name AS service_name
+     FROM containers c
+     LEFT JOIN services s ON s.id = c.service_id
+     WHERE c.container_id = ANY($1) AND c.data_source = 'discovered'`,
+    [containerIds]
+  );
+
+  const idMap = {};
+  for (const row of dbContainers.rows) {
+    idMap[row.container_id] = row;
+  }
+
+  const results = [];
+  for (const c of containers) {
+    const db = idMap[c.ID];
+    let healthStatus = 'unknown';
+    const dockerStatus = c.Status || c.State || '';
+
+    if (dockerStatus.toLowerCase().includes('unhealthy')) {
+      healthStatus = 'unhealthy';
+    } else if (dockerStatus.startsWith('Up') || dockerStatus.toLowerCase() === 'running') {
+      healthStatus = 'healthy';
+    } else if (dockerStatus.startsWith('Exited') || dockerStatus.toLowerCase() === 'exited') {
+      healthStatus = 'stopped';
+    }
+
+    const ports = [];
+    if (c.Ports) {
+      const portStr = String(c.Ports);
+      for (const part of portStr.split(',')) {
+        const trimmed = part.trim();
+        if (trimmed.includes('->')) {
+          const [host, container] = trimmed.split('->');
+          ports.push({ host: host.trim(), container: container.trim() });
+        } else {
+          ports.push({ container: trimmed });
+        }
+      }
+    }
+
+    const names = c.Names ? String(c.Names).replace(/^"|"$/g, '') : (c.Name || '');
+    const image = c.Image || '';
+
+    results.push({
+      service_name: db ? db.service_name : null,
+      service_id: db ? db.service_id : null,
+      status: healthStatus,
+      container: {
+        id: db ? db.id : null,
+        name: names,
+        image: image,
+        ports: ports,
+      },
+    });
+  }
+
+  return results;
+}
+
 module.exports = {
   getDashboardStats,
   listProviders,
@@ -334,4 +428,5 @@ module.exports = {
   getServiceMap,
   getCapacity,
   getPlatformOverview,
+  getRuntimeHealth,
 };
