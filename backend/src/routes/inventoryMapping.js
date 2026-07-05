@@ -54,12 +54,12 @@ router.get('/mapping/:app', async (req, res, next) => {
           FROM services s
           LEFT JOIN containers c ON c.environment_id = s.environment_id AND c.data_source = 'discovered'
           LEFT JOIN vms v ON v.environment_id = s.environment_id AND v.data_source = 'discovered'
-          LEFT JOIN hosts h ON (h.id = c.host_id OR h.id = v.host_id OR h.provider_id = pr.id) AND h.data_source = 'discovered'
           LEFT JOIN providers pr ON (
             pr.id = c.provider_id OR pr.id = v.provider_id
             OR pr.id = (SELECT provider_id FROM hosts WHERE id = c.host_id AND data_source = 'discovered' LIMIT 1)
             OR pr.id = (SELECT provider_id FROM hosts WHERE id = v.host_id AND data_source = 'discovered' LIMIT 1)
           ) AND pr.data_source = 'discovered'
+          LEFT JOIN hosts h ON (h.id = c.host_id OR h.id = v.host_id OR h.provider_id = pr.id) AND h.data_source = 'discovered'
           WHERE s.id = $1
           LIMIT 1
         `, [svc.id]);
