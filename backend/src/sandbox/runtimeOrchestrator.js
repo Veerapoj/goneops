@@ -37,7 +37,7 @@ async function deploySandbox(projectId, environmentId) {
   setImmediate(async () => {
     try {
       const { execSync } = require('child_process');
-      const exec = (cmd) => require('child_process').execSync(cmd, { timeout: 300000, shell: '/bin/bash' }).toString().trim();
+      const exec = (cmd) => require('child_process').execSync(cmd, { timeout: 300000, shell: true }).toString().trim();
 
       const ssh = `ssh -i /home/veenews/.ssh/id_ed25519_pve -o StrictHostKeyChecking=no ${PVE_SSH_USER}@192.168.1.165`;
       const pct = (vmid, cmd) => exec(`${ssh} 'pct exec ${vmid} -- bash -c "${cmd}"'`);
@@ -52,8 +52,8 @@ async function deploySandbox(projectId, environmentId) {
 
       exec(`${ssh} 'pct create ${vmid} ${PVE_TEMPLATE} --hostname ${lxcName} --storage local-lvm --rootfs local-lvm:16 --net0 name=eth0,bridge=vmbr0,ip=dhcp --unprivileged 0 --features nesting=1 --cores 2 --memory 2048 --swap 512 --password goneops123 2>&1'`);
 
-      const configExtra = `\\nlxc.cgroup2.devices.allow: c:*:* rwm\\nlxc.cap.drop: \\nlxc.apparmor.profile: unconfined\\nlxc.mount.auto: proc:mixed sys:ro cgroup:mixed\\n`;
-      exec(`${ssh} 'printf "${configExtra}" >> /etc/pve/lxc/${vmid}.conf'`);
+      const configExtra = Buffer.from('\nlxc.cgroup2.devices.allow: c:*:* rwm\nlxc.cap.drop: \nlxc.apparmor.profile: unconfined\nlxc.mount.auto: proc:mixed sys:ro cgroup:mixed\n').toString('base64');
+      exec(`${ssh} 'echo ${configExtra} | base64 -d >> /etc/pve/lxc/${vmid}.conf'`);
 
       await updateJobStep(jobId, 'Configuring network', 'running');
       exec(`${ssh} 'pct start ${vmid}'`);
