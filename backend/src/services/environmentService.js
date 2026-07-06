@@ -1,4 +1,21 @@
 const { query } = require('../lib/db');
+const { resolveRuntimeHost } = require('../sandbox/runtimeLocation');
+
+function enrichRuntimeLocation(env, projectName) {
+  if (!env) return env;
+  const host = resolveRuntimeHost();
+  const container = env.name
+    ? `${(projectName || 'goneops')}-${env.name}`.replace(/[^a-zA-Z0-9_-]/g, '-')
+    : null;
+  return {
+    ...env,
+    runtime_location: {
+      provider: 'proxmox',
+      host,
+      container,
+    },
+  };
+}
 
 async function createEnvironment(projectId, name) {
   const project = await query('SELECT * FROM projects WHERE id = $1', [projectId]);
@@ -85,4 +102,4 @@ async function getEnvironmentSecrets(envId) {
   return result.rows;
 }
 
-module.exports = { createEnvironment, getEnvironment, updateEnvironmentStatus, updateEnvironmentWorkingDir, getEnvironmentServices, getEnvironmentSecrets };
+module.exports = { createEnvironment, getEnvironment, updateEnvironmentStatus, updateEnvironmentWorkingDir, getEnvironmentServices, getEnvironmentSecrets, enrichRuntimeLocation };

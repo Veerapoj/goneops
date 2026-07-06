@@ -1,4 +1,5 @@
 const { query } = require('../lib/db');
+const { resolveRuntimeHost } = require('./runtimeLocation');
 
 const PORT_BASE = parseInt(process.env.SANDBOX_PORT_BASE || '20000');
 const BLOCK_SIZE = 4;
@@ -60,7 +61,14 @@ async function getPorts(environmentId) {
     'SELECT role, host_port, container_port FROM sandbox_ports WHERE environment_id = $1 ORDER BY id',
     [environmentId]
   );
-  return result.rows;
+  const host = resolveRuntimeHost();
+  return result.rows.map(row => ({ ...row, runtime_host: host }));
 }
 
-module.exports = { allocatePorts, getPorts };
+async function getPortsWithHost(environmentId) {
+  const ports = await getPorts(environmentId);
+  const host = resolveRuntimeHost();
+  return { host, ports };
+}
+
+module.exports = { allocatePorts, getPorts, getPortsWithHost };

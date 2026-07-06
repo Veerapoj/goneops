@@ -100,6 +100,14 @@ function EnvCard({ env, selected, onSelect, projectId, onAction }) {
             className="truncate hover:underline">{env.preview_url}</a>
         </div>
       )}
+      {env.runtime_location && (
+        <div className="flex items-center gap-1.5 text-[10px] text-slate-400 mb-1.5">
+          <Globe size={11} className="shrink-0" />
+          <span className="font-medium text-slate-500">{env.runtime_location.provider}</span>
+          <span className="text-slate-300">·</span>
+          <span>{env.runtime_location.host}</span>
+        </div>
+      )}
       {env.created_at && (
         <div className="flex items-center gap-1.5 text-xs text-slate-400 mb-3">
           <Calendar size={11} className="shrink-0" />

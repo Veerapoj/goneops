@@ -1,4 +1,5 @@
 const { query } = require('../lib/db');
+const { enrichRuntimeLocation } = require('./environmentService');
 
 async function listProjects(includeTest = false) {
   const whereClause = includeTest ? '' : 'WHERE (p.is_test IS NULL OR p.is_test = false)';
@@ -6,7 +7,9 @@ async function listProjects(includeTest = false) {
     SELECT p.*,
       json_agg(json_build_object(
         'id', e.id, 'name', e.name, 'status', e.status,
-        'preview_url', e.preview_url, 'working_dir', e.working_dir
+        'preview_url', e.preview_url, 'working_dir', e.working_dir,
+        'lxc_vmid', e.lxc_vmid, 'lxc_ip', e.lxc_ip, 'lxc_status', e.lxc_status,
+        'created_at', e.created_at, 'updated_at', e.updated_at
       ) ORDER BY e.name) FILTER (WHERE e.id IS NOT NULL) AS environments
     FROM projects p
     LEFT JOIN environments e ON e.project_id = p.id
@@ -14,7 +17,12 @@ async function listProjects(includeTest = false) {
     GROUP BY p.id
     ORDER BY p.created_at DESC
   `);
-  return result.rows;
+  return result.rows.map(project => ({
+    ...project,
+    environments: (project.environments || []).map(env =>
+      enrichRuntimeLocation(env, project.name)
+    ),
+  }));
 }
 
 async function getProject(id) {
@@ -35,7 +43,7 @@ async function getProject(id) {
 
   return {
     ...p,
-    environments: envs.rows,
+    environments: envs.rows.map(env => enrichRuntimeLocation(env, p.name)),
     services: services.rows,
     latest_deployment: latestDeployment.rows[0] || null,
     last_pipeline: lastPipeline.rows[0] || null,

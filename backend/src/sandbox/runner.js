@@ -1,8 +1,8 @@
-const { preflightCheck } = require('./remoteExec');
+const { preflightCheck, dockerRun, dockerRm, dockerStop, dockerExec } = require('./remoteExec');
 const { query } = require('../lib/db');
 const { updateEnvironmentStatus } = require('../services/environmentService');
 
-const { buildPreviewUrl } = require("./runtimeLocation");
+const { buildPreviewUrl, resolveRuntimeHost } = require("./runtimeLocation");
 
 async function claimTransitionalState(environmentId, projectId, nextStatus, allowedPrevious) {
   const result = await query(
@@ -26,36 +26,6 @@ async function claimTransitionalState(environmentId, projectId, nextStatus, allo
     );
   }
   return result.rows[0];
-}
-
-async function ensureLxcReady(environmentId, workingDir) {
-  const env = await query(
-    'SELECT lxc_vmid, lxc_status, lxc_ip FROM environments WHERE id = $1',
-    [environmentId]
-  );
-  const row = env.rows[0];
-  if (!row || !row.lxc_vmid) {
-    throw Object.assign(new Error('No LXC provisioned for this sandbox. Run generate-sandbox first.'), { status: 400, code: 'validation_error' });
-  }
-
-  let lxcIp = row.lxc_ip;
-
-  if (row.lxc_status !== 'ready') {
-    await query(
-      "UPDATE environments SET lxc_status = 'provisioning', updated_at = NOW() WHERE id = $1",
-      [environmentId]
-    );
-    const remoteDir = await bootstrapLxc(row.lxc_vmid, workingDir);
-    lxcIp = await getLxcIp(row.lxc_vmid);
-    await query(
-      `UPDATE environments
-          SET lxc_status = 'ready', lxc_ip = $1, working_dir = $2, updated_at = NOW()
-        WHERE id = $3`,
-      [lxcIp, remoteDir, environmentId]
-    );
-  }
-
-  return { vmid: row.lxc_vmid, ip: lxcIp, workingDir: row.working_dir };
 }
 
 async function runSandbox(projectId, environmentId) {
@@ -82,7 +52,6 @@ async function runSandbox(projectId, environmentId) {
         [environmentId]
       );
 
-      const { dockerRun, dockerRm } = require('./remoteExec');
       let deployedCount = 0;
 
       for (const svc of services.rows) {
@@ -140,7 +109,6 @@ async function stopSandbox(projectId, environmentId) {
         `SELECT s.* FROM services s WHERE s.environment_id = $1 ORDER BY s.id`,
         [environmentId]
       );
-      const { dockerStop, dockerRm } = require('./remoteExec');
       for (const svc of services.rows) {
         const containerName = `${projectName}-${svc.name}`.replace(/[^a-zA-Z0-9_-]/g, '-');
         try {
@@ -168,44 +136,57 @@ async function restartSandbox(projectId, environmentId) {
   );
   if (!env.rows.length) throw Object.assign(new Error('Environment not found'), { status: 404, code: 'not_found' });
 
-  const row = env.rows[0];
-  const workingDir = row.working_dir;
-  if (!workingDir) throw Object.assign(new Error('No sandbox directory found'), { status: 400, code: 'validation_error' });
-  if (!row.lxc_vmid) {
-    throw Object.assign(new Error('No LXC provisioned for this sandbox'), { status: 400, code: 'validation_error' });
-  }
-
   const check = await preflightCheck();
   if (!check.available) {
     throw Object.assign(new Error('Proxmox LXC provider unreachable'), { status: 503, code: 'proxmox_unavailable', details: { error: check.error } });
   }
 
+  const project = await query('SELECT * FROM projects WHERE id = $1', [projectId]);
+  const projectName = project.rows[0]?.name || `project-${projectId}`;
+
   await claimTransitionalState(environmentId, projectId, 'restarting', ['running', 'failed']);
 
   setImmediate(async () => {
     try {
-      const composeDir = row.working_dir.startsWith('/opt/') ? row.working_dir : '/opt/sandbox';
-      await pctExec(row.lxc_vmid, `cd '${composeDir}' && docker compose down`);
-      await pctExec(row.lxc_vmid, `cd '${composeDir}' && docker compose up -d --wait --build`);
-
-      const ports = await query(
-        'SELECT host_port FROM sandbox_ports WHERE environment_id = $1 AND role = $2',
-        [environmentId, 'web']
-      );
-      const webPort = ports.rows.length ? ports.rows[0].host_port : null;
-      const previewUrl = buildPreviewUrl(webPort);
-      await updateEnvironmentStatus(environmentId, 'running', previewUrl);
-      await query(
-        "UPDATE services SET status = 'healthy' WHERE environment_id = $1",
+      const services = await query(
+        `SELECT s.* FROM services s WHERE s.environment_id = $1 ORDER BY s.id`,
         [environmentId]
       );
+
+      let deployedCount = 0;
+
+      for (const svc of services.rows) {
+        const containerName = `${projectName}-${svc.name}`.replace(/[^a-zA-Z0-9_-]/g, '-');
+        const image = svc.config?.image || 'nginx:alpine';
+        const port = svc.port || 80;
+        const hostPort = 10000 + svc.id;
+
+        try {
+          await dockerStop(containerName).catch(() => {});
+          await dockerRm(containerName).catch(() => {});
+          const result = await dockerRun(image, containerName, {
+            'goneops.project': projectName,
+            'goneops.env': env.rows[0].name,
+            'goneops.service': svc.name,
+          }, [`${hostPort}:${port}`]);
+          deployedCount++;
+          console.log(`[runner] restarted ${containerName} on PVE host, container=${result.trim().slice(0, 12)}`);
+        } catch (svcErr) {
+          console.error(`[runner] restart failed for ${svc.name}: ${svcErr.message}`);
+        }
+      }
+
+      await query("UPDATE services SET status = 'healthy' WHERE environment_id = $1", [environmentId]);
+      const port = 10000 + (services.rows[0]?.id || 0);
+      const previewUrl = buildPreviewUrl(port);
+      await updateEnvironmentStatus(environmentId, 'running', previewUrl);
     } catch (err) {
       await updateEnvironmentStatus(environmentId, 'failed', null);
       console.error(`[runner] async restart error: ${err.message}`);
     }
   });
 
-  return { environment_id: environmentId, status: 'restarting', message: 'Sandbox restart initiated' };
+  return { environment_id: environmentId, status: 'restarting', message: 'Sandbox restart initiated on Proxmox host' };
 }
 
 async function getSandboxLogs(projectId, environmentId, tail = 100) {
@@ -215,33 +196,35 @@ async function getSandboxLogs(projectId, environmentId, tail = 100) {
   );
   if (!env.rows.length) throw Object.assign(new Error('Environment not found'), { status: 404, code: 'not_found' });
 
-  const row = env.rows[0];
-  const workingDir = row.working_dir;
-  if (!workingDir) throw Object.assign(new Error('No sandbox directory found'), { status: 400, code: 'validation_error' });
+  const project = await query('SELECT * FROM projects WHERE id = $1', [projectId]);
+  const projectName = project.rows[0]?.name || `project-${projectId}`;
 
-  if (row.lxc_vmid) {
-    try {
-      const composeDir = workingDir.startsWith('/opt/') ? workingDir : '/opt/sandbox';
-      const boundedTail = Number.isInteger(tail) ? Math.min(Math.max(tail, 1), 1000) : 100;
-      const stdout = await pctExec(row.lxc_vmid, `cd '${composeDir}' && docker compose logs --tail ${boundedTail} --no-color`);
-      return { logs: stdout, error: '', timestamp: new Date().toISOString() };
-    } catch (err) {
-      return { logs: err.stdout || '', error: err.stderr || err.message, timestamp: new Date().toISOString() };
-    }
+  const services = await query(
+    'SELECT name FROM services WHERE environment_id = $1 ORDER BY id',
+    [environmentId]
+  );
+
+  if (!services.rows.length) {
+    return { logs: '', error: 'No services found for this environment', timestamp: new Date().toISOString() };
   }
 
   const boundedTail = Number.isInteger(tail) ? Math.min(Math.max(tail, 1), 1000) : 100;
-  const { execFile } = require('child_process');
-  return new Promise((resolve) => {
-    execFile('docker', ['compose', 'logs', '--tail', String(boundedTail), '--no-color'], {
-      cwd: workingDir,
-      timeout: 120000,
-      maxBuffer: 1024 * 1024,
-      windowsHide: true,
-    }, (error, stdout, stderr) => {
-      resolve({ logs: stdout || '', error: stderr || (error ? error.message : ''), timestamp: new Date().toISOString() });
-    });
-  });
+  let allLogs = '';
+
+  try {
+    for (const svc of services.rows) {
+      const containerName = `${projectName}-${svc.name}`.replace(/[^a-zA-Z0-9_-]/g, '-');
+      try {
+        const logOutput = await dockerExec(`logs --tail ${boundedTail} ${containerName}`);
+        allLogs += `\n=== ${containerName} ===\n${logOutput}`;
+      } catch (e) {
+        allLogs += `\n=== ${containerName} ===\n[error] ${e.stderr || e.message}`;
+      }
+    }
+    return { logs: allLogs.trim() || '(no output)', error: '', timestamp: new Date().toISOString() };
+  } catch (err) {
+    return { logs: allLogs || '', error: err.stderr || err.message, timestamp: new Date().toISOString() };
+  }
 }
 
 async function testApi(projectId, environmentId) {
@@ -258,7 +241,7 @@ async function testApi(projectId, environmentId) {
   const webPort = env.rows[0].host_port;
   const lxcIp = env.rows[0].lxc_ip;
 
-  const targetHost = lxcIp || 'localhost';
+  const targetHost = lxcIp || resolveRuntimeHost();
   const targetPort = lxcIp ? 8080 : webPort;
 
   const http = require('http');

@@ -216,6 +216,17 @@ export default function Overview() {
               </a>
             )}
           </div>
+          {activeEnv?.runtime_location && (
+            <div className="flex items-center gap-3 mt-2 pt-2 border-t border-slate-100">
+              <span className="text-[10px] text-slate-400">
+                <span className="font-medium text-slate-500">{activeEnv.runtime_location.provider}</span>
+                {' \u00B7 '}{activeEnv.runtime_location.host}
+              </span>
+              {activeEnv.runtime_location.container && (
+                <span className="text-[10px] text-slate-400 font-mono">{activeEnv.runtime_location.container}</span>
+              )}
+            </div>
+          )}
           <p className="text-xs text-slate-400 mt-1">{data.name || '—'}</p>
         </div>
       </div>

@@ -33,7 +33,6 @@ services:
       - SANDBOX_BASE_DIR=/tmp/goneops-sandboxes
       - SANDBOX_PORT_BASE=20000
       - NODE_ENV=development
-      - PUBLIC_HOST=192.168.1.147
       - PROXMOX_TOKEN_ENC_KEY=change-me-to-a-strong-random-string-at-least-32-chars
       - PVE_SSH_HOST=192.168.1.165
       - PVE_SSH_USER=root
