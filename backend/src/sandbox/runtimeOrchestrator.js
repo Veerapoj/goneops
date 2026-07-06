@@ -123,7 +123,7 @@ async function deploySandbox(projectId, environmentId) {
       exec(`${ssh} 'pct exec ${vmid} -- apt-get update -qq'`);
 
       await updateJobStep(jobId, 'Installing Docker', 'running');
-      exec(`${ssh} 'pct exec ${vmid} -- apt-get install -y -qq docker.io'`);
+      exec(`${ssh} 'pct exec ${vmid} -- apt-get install -y -qq docker.io curl'`);
       const df = Buffer.from(JSON.stringify({"storage-driver":"vfs"})).toString('base64');
       exec(`${ssh} 'echo ${df} | base64 -d | pct exec ${vmid} -- tee /etc/docker/daemon.json > /dev/null'`);
       exec(`${ssh} 'pct exec ${vmid} -- systemctl start docker'`);
@@ -147,12 +147,17 @@ async function deploySandbox(projectId, environmentId) {
       }
 
       await updateJobStep(jobId, 'Checking health', 'running');
+      await new Promise((r) => setTimeout(r, 15000));
       let healthy = false;
-      for (let attempt = 0; attempt < 5 && !healthy; attempt++) {
-        if (attempt > 0) await new Promise((r) => setTimeout(r, 3000));
+      for (let attempt = 0; attempt < 8 && !healthy; attempt++) {
+        if (attempt > 0) await new Promise((r) => setTimeout(r, 5000));
         try {
-          const healthResult = pct(vmid, `curl -s -o /dev/null -w %{http_code} http://127.0.0.1:${webPort} 2>/dev/null`);
-          healthy = healthResult.trim() === '200';
+          const running = pct(vmid, 'docker ps -q 2>/dev/null | wc -l');
+          const count = parseInt(running.trim()) || 0;
+          if (count >= services.length) {
+            const httpOk = pct(vmid, `docker exec $(docker ps -q | head -1) curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:80 2>/dev/null`);
+            if (httpOk.trim() === '200') healthy = true;
+          }
         } catch (_) {}
       }
       if (!healthy) throw new Error(`Health check failed: HTTP 200 not returned from http://127.0.0.1:${webPort} after 5 retries`);
