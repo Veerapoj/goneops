@@ -8,7 +8,7 @@ const proxmoxClient = require('../lib/proxmoxClient');
 const { listProviders: listProxmoxProviders, getProviderWithSecret, buildClientFromProvider, insertTask, writeAuditLog } = require('../services/proxmoxService');
 
 const SANDBOX_BASE = process.env.SANDBOX_BASE_DIR || '/tmp/goneops-sandboxes';
-const PUBLIC_HOST = process.env.PUBLIC_HOST || 'localhost';
+const { resolveRuntimeHost } = require('./runtimeLocation');
 
 async function generateSandbox(projectId, environmentId) {
   const project = await query('SELECT * FROM projects WHERE id = $1', [projectId]);
@@ -93,7 +93,7 @@ async function generateSandbox(projectId, environmentId) {
 
     await query(
       'UPDATE environments SET working_dir = $1, preview_url = $2, updated_at = NOW() WHERE id = $3',
-      [workingDir, `http://${PUBLIC_HOST}:${webPort}`, environmentId]
+      [workingDir, `http://${resolveRuntimeHost()}:${webPort}`, environmentId]
     );
 
     await provisionSandboxLxc(environmentId, projectId, projectName, envName, prefix, workingDir);

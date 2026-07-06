@@ -2,7 +2,7 @@ const { preflightCheck } = require('./remoteExec');
 const { query } = require('../lib/db');
 const { updateEnvironmentStatus } = require('../services/environmentService');
 
-const PUBLIC_HOST = process.env.PUBLIC_HOST || 'localhost';
+const { buildPreviewUrl } = require("./runtimeLocation");
 
 async function claimTransitionalState(environmentId, projectId, nextStatus, allowedPrevious) {
   const result = await query(
@@ -106,7 +106,8 @@ async function runSandbox(projectId, environmentId) {
       }
 
       await query("UPDATE services SET status = 'healthy' WHERE environment_id = $1", [environmentId]);
-      const previewUrl = `http://${PUBLIC_HOST}:${10000 + (services.rows[0]?.id || 0)}`;
+      const port = 10000 + (services.rows[0]?.id || 0);
+      const previewUrl = buildPreviewUrl(port);
       await updateEnvironmentStatus(environmentId, 'running', previewUrl);
     } catch (err) {
       await updateEnvironmentStatus(environmentId, 'failed', null);
@@ -191,9 +192,8 @@ async function restartSandbox(projectId, environmentId) {
         'SELECT host_port FROM sandbox_ports WHERE environment_id = $1 AND role = $2',
         [environmentId, 'web']
       );
-      const lxcIp = row.lxc_ip;
       const webPort = ports.rows.length ? ports.rows[0].host_port : null;
-      const previewUrl = lxcIp && webPort ? `http://${lxcIp}:${webPort}` : (webPort ? `http://${PUBLIC_HOST}:${webPort}` : '');
+      const previewUrl = buildPreviewUrl(webPort);
       await updateEnvironmentStatus(environmentId, 'running', previewUrl);
       await query(
         "UPDATE services SET status = 'healthy' WHERE environment_id = $1",
