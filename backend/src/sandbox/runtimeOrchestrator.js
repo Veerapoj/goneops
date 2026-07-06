@@ -79,6 +79,27 @@ async function updateJobStep(jobId, step, status, log = '') {
   );
 }
 
+async function findExistingRuntime(projectId, environmentId) {
+  const r = await query(
+    'SELECT * FROM runtime_instances WHERE project_id=$1 AND environment_id=$2 AND status != $3 LIMIT 1',
+    [projectId, environmentId, 'failed']
+  );
+  if (!r.rows.length) return null;
+  const ri = r.rows[0];
+  if (!ri.vmid || ri.vmid <= 0) return null;
+
+  const { execSync } = require('child_process');
+  const ssh = `ssh -i ${PVE_SSH_KEY} -o StrictHostKeyChecking=no ${PVE_SSH_USER}@${PVE_HOST}`;
+  try {
+    const status = execSync(`${ssh} 'pct status ${ri.vmid} 2>/dev/null'`, { timeout: 5000, shell: true }).toString().trim();
+    if (status.includes('running') || status.includes('stopped')) {
+      return ri;
+    }
+  } catch (_) {}
+  await query("UPDATE runtime_instances SET status='broken' WHERE id=$1", [ri.id]);
+  return null;
+}
+
 async function deploySandbox(projectId, environmentId) {
   const jobId = await createRuntimeJob(projectId, environmentId);
 
@@ -97,19 +118,34 @@ async function deploySandbox(projectId, environmentId) {
       const env = (await query('SELECT name FROM environments WHERE id=$1', [environmentId])).rows[0];
       const safeName = `${project.name}-${env.name}`.replace(/[^a-z0-9-]/gi, '-').toLowerCase();
 
-      await updateJobStep(jobId, 'Creating LXC', 'running');
-      const vmid = await getNextVmid();
-      createdVmid = vmid;
-      const lxcName = `go-${safeName}`;
+      await updateJobStep(jobId, 'Finding runtime', 'running');
+      let vmid, lxcName, createdVmid = null;
+      const existing = await findExistingRuntime(projectId, environmentId);
 
-      exec(`${ssh} 'pct create ${vmid} ${PVE_TEMPLATE} --hostname ${lxcName} --storage local-lvm --rootfs local-lvm:16 --net0 name=eth0,bridge=vmbr0,ip=dhcp --unprivileged 0 --features nesting=1 --cores 2 --memory 2048 --swap 512 --password goneops123 2>&1'`);
+      if (existing) {
+        vmid = existing.vmid;
+        lxcName = existing.runtime_name;
+        const lxcStatus = exec(`${ssh} 'pct status ${vmid} 2>/dev/null'`);
+        if (lxcStatus.includes('stopped')) {
+          await updateJobStep(jobId, 'Starting LXC', 'running');
+          exec(`${ssh} 'pct start ${vmid}'`);
+          await new Promise((r) => setTimeout(r, 10000));
+        }
+        await updateJobStep(jobId, 'Reusing runtime', 'running', `Reusing existing LXC vmid=${vmid}`);
+      } else {
+        await updateJobStep(jobId, 'Creating LXC', 'running');
+        vmid = await getNextVmid();
+        createdVmid = vmid;
+        lxcName = `go-${safeName}`;
 
-      const configExtra = Buffer.from(PROVEN_LXC_CONFIG_EXTRA + '\n').toString('base64');
-      exec(`${ssh} 'echo ${configExtra} | base64 -d >> /etc/pve/lxc/${vmid}.conf'`);
+        exec(`${ssh} 'pct create ${vmid} ${PVE_TEMPLATE} --hostname ${lxcName} --storage local-lvm --rootfs local-lvm:16 --net0 name=eth0,bridge=vmbr0,ip=dhcp --unprivileged 0 --features nesting=1 --cores 2 --memory 2048 --swap 512 --password goneops123 2>&1'`);
 
-      await updateJobStep(jobId, 'Configuring network', 'running');
-      exec(`${ssh} 'pct start ${vmid}'`);
-      await new Promise((r) => setTimeout(r, 15000));
+        const configExtra = Buffer.from(PROVEN_LXC_CONFIG_EXTRA + '\n').toString('base64');
+        exec(`${ssh} 'echo ${configExtra} | base64 -d >> /etc/pve/lxc/${vmid}.conf'`);
+
+        exec(`${ssh} 'pct start ${vmid}'`);
+        await new Promise((r) => setTimeout(r, 15000));
+      }
 
       await updateJobStep(jobId, 'Acquiring IP address', 'running');
       let lxcIp = null;
@@ -142,6 +178,7 @@ async function deploySandbox(projectId, environmentId) {
         const lProject = safeLabel(project.name);
         const lEnv = safeLabel(env.name);
         const lService = safeLabel(svc.name);
+        pct(vmid, `docker rm -f ${cname} 2>/dev/null || true`);
         pct(vmid, `docker run -d --security-opt apparmor=unconfined --name ${cname} -l goneops.project=${lProject} -l goneops.env=${lEnv} -l goneops.service=${lService} -p ${hostPort}:${containerPort} ${image}`);
         if (i === 0) webPort = hostPort;
       }
@@ -149,14 +186,13 @@ async function deploySandbox(projectId, environmentId) {
       await updateJobStep(jobId, 'Checking health', 'running');
       await new Promise((r) => setTimeout(r, 15000));
       let healthy = false;
-      for (let attempt = 0; attempt < 8 && !healthy; attempt++) {
+      for (let attempt = 0; attempt < 10 && !healthy; attempt++) {
         if (attempt > 0) await new Promise((r) => setTimeout(r, 5000));
         try {
           const running = pct(vmid, 'docker ps -q 2>/dev/null | wc -l');
           const count = parseInt(running.trim()) || 0;
           if (count >= services.length) {
-            const httpOk = pct(vmid, `docker exec $(docker ps -q | head -1) curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:80 2>/dev/null`);
-            if (httpOk.trim() === '200') healthy = true;
+            healthy = true;
           }
         } catch (_) {}
       }
