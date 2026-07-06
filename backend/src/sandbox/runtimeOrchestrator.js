@@ -2,6 +2,7 @@ const { query } = require('../lib/db');
 const { writeAuditLog } = require('../lib/audit');
 
 const PVE_SSH_USER = process.env.PVE_SSH_USER || 'root';
+const PVE_SSH_KEY = process.env.PVE_SSH_KEY || '/home/veenews/.ssh/id_ed25519_pve';
 const PVE_TEMPLATE = process.env.GONEOPS_LXC_TEMPLATE || 'local:vztmpl/ubuntu-24.04-standard_24.04-2_amd64.tar.zst';
 
 async function getNextVmid() {
@@ -39,7 +40,7 @@ async function deploySandbox(projectId, environmentId) {
       const { execSync } = require('child_process');
       const exec = (cmd) => require('child_process').execSync(cmd, { timeout: 300000, shell: true }).toString().trim();
 
-      const ssh = `ssh -i /home/veenews/.ssh/id_ed25519_pve -o StrictHostKeyChecking=no ${PVE_SSH_USER}@192.168.1.165`;
+      const ssh = `ssh -i ${PVE_SSH_KEY} -o StrictHostKeyChecking=no ${PVE_SSH_USER}@192.168.1.165`;
       const pct = (vmid, cmd) => exec(`${ssh} 'pct exec ${vmid} -- bash -c "${cmd}"'`);
 
       const project = (await query('SELECT name FROM projects WHERE id=$1', [projectId])).rows[0];
