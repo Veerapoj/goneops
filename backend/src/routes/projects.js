@@ -78,7 +78,43 @@ router.post('/projects/:id/generate-sandbox', requireRole('operator'), async (re
   } catch (e) { next(e); }
 });
 
-// POST /api/projects/:id/run
+// POST /api/projects/:id/environments/:envId/run — Runtime Orchestrator
+router.post('/projects/:id/environments/:envId/run', requireRole('operator'), async (req, res, next) => {
+  try {
+    const { deploySandbox } = require('../sandbox/runtimeOrchestrator');
+    const result = await deploySandbox(req.params.id, req.params.envId);
+    await writeAuditLog({
+      actor: req.goneopsActor || 'system',
+      action: 'sandbox_run',
+      resource_type: 'environment',
+      resource_id: req.params.envId,
+      result: 'success',
+      message: `Runtime deploy started for project ${req.params.id} env ${req.params.envId}`,
+    });
+    res.status(202).json(result);
+  } catch (e) {
+    await writeAuditLog({
+      actor: req.goneopsActor || 'system',
+      action: 'sandbox_run',
+      resource_type: 'environment',
+      resource_id: req.params.envId,
+      result: 'failure',
+      message: e.message,
+    }).catch(() => {});
+    next(e);
+  }
+});
+
+// GET /api/projects/:id/environments/:envId/jobs — Get runtime job status
+router.get('/projects/:id/environments/:envId/jobs', async (req, res, next) => {
+  try {
+    const result = await query(
+      'SELECT * FROM runtime_jobs WHERE environment_id = $1 ORDER BY id DESC LIMIT 1',
+      [req.params.envId]
+    );
+    res.json(result.rows[0] || { status: 'no_jobs' });
+  } catch (e) { next(e); }
+});
 router.post('/projects/:id/run', requireRole('operator'), async (req, res, next) => {
   try {
     const { environment_id } = req.body;

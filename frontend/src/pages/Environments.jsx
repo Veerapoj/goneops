@@ -15,17 +15,37 @@ function statusBadge(status) {
 
 function EnvCard({ env, selected, onSelect, projectId, onAction }) {
   const [actionLoading, setActionLoading] = useState(null);
+  const [jobStatus, setJobStatus] = useState(null);
   const isRunning = env.status === 'running' || env.status === 'active';
 
   const handleRun = async (e) => {
     e.stopPropagation();
     setActionLoading('run');
+    setJobStatus({ step: 'Starting', status: 'running' });
     try {
-      await runSandbox(projectId, env.id);
-      onAction?.();
+      const res = await fetch(`/api/projects/${projectId}/environments/${env.id}/run`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-GoneOps-Role': 'operator' },
+      });
+      const data = await res.json();
+      if (data.job_id) {
+        const poll = setInterval(async () => {
+          const jr = await fetch(`/api/projects/${projectId}/environments/${env.id}/jobs`);
+          const job = await jr.json();
+          if (job.status === 'success' || job.status === 'failed') {
+            clearInterval(poll);
+            setJobStatus({ step: job.current_step, status: job.status, logs: job.logs });
+            setActionLoading(null);
+            onAction?.();
+          } else {
+            setJobStatus({ step: job.current_step, status: 'running' });
+          }
+        }, 3000);
+      } else {
+        setActionLoading(null);
+        onAction?.();
+      }
     } catch (err) {
-      console.error(err);
-    } finally {
+      setJobStatus({ step: 'Error', status: 'failed', logs: err.message });
       setActionLoading(null);
     }
   };
@@ -84,6 +104,22 @@ function EnvCard({ env, selected, onSelect, projectId, onAction }) {
         <div className="flex items-center gap-1.5 text-xs text-slate-400 mb-3">
           <Calendar size={11} className="shrink-0" />
           <span>Created {new Date(env.created_at).toLocaleDateString()}</span>
+        </div>
+      )}
+
+      {jobStatus && (
+        <div className={`mb-3 p-2 rounded-lg text-xs font-mono ${
+          jobStatus.status === 'success' ? 'bg-emerald-50 text-emerald-700' :
+          jobStatus.status === 'failed' ? 'bg-red-50 text-red-700' :
+          'bg-blue-50 text-blue-700'
+        }`}>
+          <div className="flex items-center gap-1.5">
+            {jobStatus.status === 'running' && <Loader2 size={11} className="animate-spin" />}
+            {jobStatus.status === 'success' && <CheckCircle2 size={11} />}
+            {jobStatus.status === 'failed' && <AlertCircle size={11} />}
+            <span className="font-semibold">{jobStatus.step || 'Running...'}</span>
+          </div>
+          {jobStatus.logs && <div className="mt-1 text-xs opacity-75 truncate">{jobStatus.logs.slice(-100)}</div>}
         </div>
       )}
 

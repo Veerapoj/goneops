@@ -383,4 +383,33 @@ CREATE TABLE IF NOT EXISTS sync_jobs (
 CREATE INDEX IF NOT EXISTS idx_sync_jobs_provider ON sync_jobs(provider_id);
 CREATE INDEX IF NOT EXISTS idx_sync_jobs_status ON sync_jobs(status);
 
+-- 21. Runtime Instances
+CREATE TABLE IF NOT EXISTS runtime_instances (
+    id SERIAL PRIMARY KEY,
+    project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+    environment_id INTEGER REFERENCES environments(id) ON DELETE CASCADE,
+    vmid INTEGER,
+    runtime_name VARCHAR(255),
+    ip_address VARCHAR(45),
+    status VARCHAR(50) DEFAULT 'pending',
+    preview_url VARCHAR(500),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (project_id, environment_id)
+);
+
+-- 22. Runtime Jobs
+CREATE TABLE IF NOT EXISTS runtime_jobs (
+    id SERIAL PRIMARY KEY,
+    project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+    environment_id INTEGER REFERENCES environments(id) ON DELETE CASCADE,
+    job_type VARCHAR(100) DEFAULT 'deploy',
+    status VARCHAR(50) DEFAULT 'pending',
+    current_step VARCHAR(255),
+    logs TEXT DEFAULT '',
+    started_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMP WITH TIME ZONE,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Seed data removed - real infrastructure synced from Proxmox
