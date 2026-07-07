@@ -470,6 +470,9 @@ export default function Overview() {
                 <Link to="/files" className="flex items-center gap-2 border rounded-lg p-2.5 hover:bg-slate-50 text-slate-600 transition-colors">
                   <FileCode2 size={13} /> File Browser
                 </Link>
+                <Link to="/sandbox" className="flex items-center gap-2 border rounded-lg p-2.5 hover:bg-slate-50 text-slate-600 transition-colors">
+                  <Terminal size={13} /> Open Terminal
+                </Link>
                 <Link to="/logs" className="flex items-center gap-2 border rounded-lg p-2.5 hover:bg-slate-50 text-slate-600 transition-colors">
                   <Terminal size={13} /> View Logs
                 </Link>

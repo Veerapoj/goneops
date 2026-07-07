@@ -7,6 +7,7 @@ import Overview from './pages/Overview';
 import Environments from './pages/Environments';
 import Services from './pages/Services';
 import Databases from './pages/Databases';
+import CacheServices from './pages/CacheServices';
 import Pipelines from './pages/Pipelines';
 import Deployments from './pages/Deployments';
 import Sandbox from './pages/Sandbox';
@@ -47,6 +48,7 @@ export default function App() {
           <Route path="environments" element={<Environments />} />
           <Route path="services" element={<Services />} />
           <Route path="databases" element={<Databases />} />
+<Route path="cache" element={<CacheServices />} />
           <Route path="pipelines" element={<Pipelines />} />
           <Route path="deployments" element={<Deployments />} />
           <Route path="sandbox" element={<Sandbox />} />

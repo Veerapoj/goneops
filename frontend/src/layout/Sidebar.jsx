@@ -43,6 +43,7 @@ const navGroups = [
       { to: '/environments', label: 'Environments', icon: Globe },
       { to: '/services', label: 'Services', icon: Server },
       { to: '/databases', label: 'Databases', icon: Database },
+      { to: '/cache', label: 'Cache & Queue', icon: Server },
       { to: '/secrets', label: 'Secrets', icon: Lock },
       { to: '/settings', label: 'Settings', icon: Settings },
     ],

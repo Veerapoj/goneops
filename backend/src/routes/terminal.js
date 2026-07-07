@@ -57,7 +57,7 @@ function handleTerminal(ws, req) {
       }
 
       const row = env.rows[0];
-      if (!row.working_dir) {
+      if (!row.working_dir && !row.lxc_vmid) {
         return close(4000, 'No sandbox generated. Run generate-sandbox first.');
       }
       if (row.status !== 'running') {
@@ -65,10 +65,9 @@ function handleTerminal(ws, req) {
       }
 
       if (row.lxc_vmid && PVE_SSH_HOST) {
-        const composeDir = row.working_dir.startsWith('/opt/') ? row.working_dir : '/opt/sandbox';
         send(JSON.stringify({ type: 'connected', message: `Terminal session established (LXC vmid ${row.lxc_vmid})` }));
 
-        const cmd = `cd '${composeDir}' && docker compose exec -T web sh`;
+        const cmd = 'docker exec -it $(docker ps -q | head -1) sh 2>/dev/null || docker exec -it $(docker ps -a -q | head -1) sh 2>/dev/null || bash';
         const sshArgs = [
           ...buildSshArgs(),
           `${PVE_SSH_USER}@${PVE_SSH_HOST}`,
@@ -89,7 +88,7 @@ function handleTerminal(ws, req) {
 
         send(JSON.stringify({ type: 'connected', message: 'Terminal session established (local Docker)' }));
 
-        child = spawn('docker', ['compose', 'exec', '-T', 'web', 'sh'], {
+        child = spawn('docker', ['exec', '-it', 'web', 'sh'], {
           cwd: row.working_dir,
           stdio: ['pipe', 'pipe', 'pipe'],
           env: { ...process.env, TERM: 'xterm-256color', LINES: '24', COLUMNS: '80' },
