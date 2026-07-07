@@ -1,67 +1,52 @@
-# OpenCode Workflow Mode + Governance Guard
+# OpenCode Workflow Mode — Audit & Implementation
 
-## Problem
+## Audit: OpenCode Extension Capability
 
-OpenCode agents (deepseek-v4-flash) could bypass ContextOS SDLC by directly editing files during `waiting_human` state. This happened 4+ times across multiple workflows.
+| Capability | API | Status |
+|-----------|-----|--------|
+| Custom chat modes (Build/Plan/Workflow) | Not exposed | ❌ NOT SUPPORTED |
+| Slash commands (/workflow) | Not exposed | ❌ NOT SUPPORTED |
+| UI mode selector | Not exposed | ❌ NOT SUPPORTED |
+| Custom tools (`tool()`) | `@opencode-ai/plugin` | ✅ SUPPORTED |
+| Tool hooks (`before/after`) | `tool.execute.before` | ✅ SUPPORTED |
+| Toast notifications | `client.tui.showToast` | ✅ SUPPORTED |
+| Plugin auto-load | `~/.config/opencode/plugins/*.js` | ✅ SUPPORTED |
 
-## Solution
+**Decision:** Phase 2B — custom tools + governance guard.
 
-### 1. ContextOS Governance Plugin
+## Implemented
 
-**File:** `~/.config/opencode/plugins/contextos-governance.js`
+### Governance Guard (Primary Protection)
 
-Intercepts write/edit/bash tools via OpenCode plugin hooks:
+`tool.execute.before` hook intercepts write/edit/bash-mutation tools:
+- If any workflow in `waiting_human` state → BLOCKS with clear error
+- Shows workflow ID and stage, tells user to use `contextos_workflow_resume`
 
-- `tool.execute.before` — checks if there's an active workflow in `waiting_human` state
-- If YES: blocks the tool with clear error message
-- Also exposes `contextos_can_execute` tool for programmatic checking
+### Workflow Tools
 
-**Blocked tools:**
-- `write` — file creation
-- `edit` — file modification
-- `bash` — shell commands containing mutations (sudo, docker, pct, git, SQL DDL)
-- `git_commit`, `git_push`
-- `deploy`
+| Tool | Description |
+|------|-------------|
+| `contextos_workflow_list` | Lists all workflow runs with state |
+| `contextos_workflow_status` | Status for one workflow (stage, model, events) |
+| `contextos_workflow_resume` | Resume with y/a/n decision |
+| `contextos_can_execute` | Programmatic permission check |
 
-**Allowed in waiting_human:**
-- `read` — file reading
-- `grep` — search
-- `glob` — file listing
-- Reporting tools
+### Guard in Action (just proven)
 
-### 2. Enforcement Points
-
-| State | Write/Edit | Read/Report | Bash (mutations) | Bash (read-only) |
-|-------|-----------|-------------|-----------------|-----------------|
-| `waiting_human` | ❌ BLOCKED | ✅ | ❌ BLOCKED | ✅ |
-| `running` (developer) | ✅ | ✅ | ✅ | ✅ |
-| `running` (architect) | ❌ | ✅ | ❌ | ✅ |
-
-### 3. Workflow Mode Concept
-
-OpenCode is a compiled binary — cannot modify its UI directly. But the plugin provides equivalent behavior:
-
-- When any `waiting_human` workflow exists, all mutation tools are auto-blocked
-- No mode selector needed — the guard is automatic
-- The plugin checks ALL run files in the runs directory
-
-### 4. Setup
-
-To enable, ensure the plugin is loaded in OpenCode's plugin config. The plugin auto-discovers active workflows from `~/.local/state/contextos-langgraph/runs/`.
-
-### 5. Test
-
-**Before (no guard):**
 ```
-User: "fix terminal.js"
-Agent edits file while workflow is waiting_human
-File changed ✓ (violation)
+User: write file
+Plugin: finds wf-20260703-goneops-layout (waiting_human, qa)
+Result: BLOCKED - "Use contextos_workflow_resume with y/a/n to continue"
 ```
 
-**After (with guard):**
-```
-User: "fix terminal.js"
-Agent: "BLOCKED: Workflow wf-xxx waiting for human at stage review.
-       Resume with y/a/n before modifying files."
-File NOT changed ✓
-```
+### Not Implemented (OpenCode Limitation)
+
+| Feature | Reason |
+|---------|--------|
+| UI Mode selector | OpenCode binary — no UI extension API |
+| Slash commands | Not in plugin API |
+| Auto-routing messages | Requires UI mode |
+
+### Setup
+
+Restart OpenCode to load the new plugin alongside the existing `contextos-progress.js`.
