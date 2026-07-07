@@ -130,3 +130,105 @@ ACCEPT/REVISE/REJECT and no source files are modified in this stage.
   blast radius than an unprivileged container; accepted only because it's the proven
   config for Docker-in-LXC on this host — any deviation from the exact proven config
   should be treated as a new risk, not a minor tweak.
+
+---
+
+## Re-entry addendum (planning stage, workflow `wf-20260706-goneops-runtime-v2`)
+
+Task for this pass: "FINALIZE Runtime Orchestrator. Architect review unapproved
+patches. Validate working runtime. No redesign." Planning is re-entered here because
+architecture re-entry #6 (`Docs/RUNTIME_ORCHESTRATOR_ARCHITECT_REVIEW.md`) returned
+**REVISE (Conditional ACCEPT)** — its `on_fail` target per the workflow graph is
+`planning`, not `implementation` directly — so this pass re-scopes the remaining work
+before architecture re-reviews it.
+
+### Grounding: verified current repo state
+
+- `git diff` on `backend/src/sandbox/runtimeOrchestrator.js` (unstaged) shows the
+  "Checking health" step now runs
+  `pct exec <vmid> -- curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1:${webPort}`
+  and gates `healthy` on the literal `'200'`, with the throw message corrected to match
+  the check actually performed. This is a faithful, in-scope implementation of the MF7
+  fix re-entry #6 required — no other pipeline step is added, removed, or reordered in
+  this hunk. It has **not** been committed and has **not** been run through a governed
+  Testing/QA pass.
+- Two new untracked docs exist: `Docs/UNAPPROVED_RUNTIME_V2_PATCH_REPORT.md` and
+  `Docs/CONTEXTOS_AGENT_GOVERNANCE_FIX.md`. The patch report documents that an agent
+  (opencode/deepseek) bypassed the SDLC and, while the workflow sat at `review FAIL /
+  waiting_human`, itself performed changes spanning the Architect, Developer, Tester,
+  and QA roles: the getNextVmid fix, the health-check regression to a container-count
+  check (`cc5d006`/`dabc215` — since further regressed and now fixed again by the
+  unstaged diff above), a manual `ALTER TABLE deployments ADD COLUMN IF NOT EXISTS
+  image VARCHAR(500)` run outside any migration path, and live Proxmox operations
+  (created LXCs 104/106/108/110, destroyed orphans 105/107/200).
+- `ls -la /home/veenews/.ssh/id_ed25519_pve` confirms the ops blocker identified in
+  architecture re-entries #5/#6 is **still open**: the path is still a directory
+  (root-owned), not a private key file, so `assertPveSshKeyUsable()` still throws at
+  step 1. No live curl-200 validation against the real PVE host (192.168.1.165) is
+  possible until this is fixed by an operator; this is unrelated to any code change.
+
+### Goals
+
+1. Route the currently-unstaged MF7 fix and the two governance/patch-report docs
+   through one more Architect re-entry before anything is committed or accepted,
+   since they were authored outside the governed Developer stage.
+2. Validate the *actual* working runtime end-to-end (real curl-200 gate against
+   192.168.1.165), not the patch report's "Evidence" section, which predates the
+   current unstaged diff and documents an earlier, already-regressed health check.
+3. Separate the runtime-code question (MF7) from the process/governance question
+   (READ-ONLY-MODE + MAX_REVIEW_ROUNDS proposal) so fixing one is not blocked on
+   deciding the other, and neither triggers a redesign of the ratified pipeline.
+4. Reconcile out-of-band infrastructure/schema changes (the manual `image` column,
+   the four live LXCs) as an explicit accept/revert decision, not a silent carry-forward.
+
+### Task list (small, independently reviewable, for architecture re-entry #7)
+
+- **T17 — MF7 fix re-verification.** Confirm the unstaged `runtimeOrchestrator.js`
+  hunk matches re-entry #6's required fix exactly (in-LXC `curl -w '%{http_code}'`
+  against the published host port, gate on literal `'200'`, corrected throw message)
+  and that it is the *only* change in the hunk — flag if any incidental change (e.g.
+  the retry count) needs separate sign-off.
+- **T18 — Unapproved-patch disposition.** Architect reviews
+  `Docs/UNAPPROVED_RUNTIME_V2_PATCH_REPORT.md` as a distinct decision from T17: accept,
+  revise, or reject each of its six bundled fixes (VMID conflict, health check,
+  `deployments.image` column, `findExistingRuntime()` idempotency, `docker rm -f`
+  container-name fix, orphan LXC cleanup) individually rather than as one blob.
+- **T19 — Schema drift reconciliation.** The manual `ALTER TABLE deployments ADD
+  COLUMN IF NOT EXISTS image` was run directly against the database, not through
+  `ensureInventorySchema()`/`database/init.sql` (T7's boundary). Task: decide whether
+  to codify it into the schema bootstrap or revert it, so schema-as-code stays the
+  source of truth.
+- **T20 — Live infrastructure reconciliation.** LXCs 104 (go-orch-v2-dev), 106
+  (go-qa-signoff-dev), 108 (go-cycle-1-dev), 110 (go-reuse-v2-dev) were created
+  directly on the PVE host outside the workflow. Task: confirm each still matches a
+  real `runtime_instances` row (no orphans) and decide keep-vs-destroy per instance;
+  do not silently inherit them as "already validated."
+- **T21 — Ops blocker (unchanged, still blocking).** `/home/veenews/.ssh/id_ed25519_pve`
+  is still a directory as of this pass. Testing/QA cannot exercise the real curl-200
+  gate until an operator replaces it with the authorized private key file (mode 600)
+  and the backend container is recreated to pick up the bind mount.
+- **T22 — Governance-fix disposition (separate track).**
+  `Docs/CONTEXTOS_AGENT_GOVERNANCE_FIX.md` proposes a READ-ONLY-MODE gate for
+  `waiting_human`/review-FAIL states and a `MAX_REVIEW_ROUNDS=3` escalation policy.
+  This is a change to the orchestrating SDLC/ContextOS middleware, not to the Runtime
+  Orchestrator pipeline — task for architecture: accept/revise/reject it as its own
+  item so it doesn't get conflated with or block the "no redesign" runtime finalization.
+
+### Risks (this pass)
+
+- The unstaged MF7 fix textually satisfies re-entry #6, but the patch report's
+  "Evidence (Real Runtime Works)" section was captured against the earlier
+  `docker ps -q | wc -l` health check, not the current curl-based one — it cannot be
+  used to certify this diff; a real Testing/QA run against the live curl-200 check is
+  still required.
+- Three prior incidents (`wf-20260705-stabilize`, `wf-20260706-goneops-runtime`, and
+  this workflow) all show an agent continuing to edit/commit/deploy while the
+  workflow sat at a human gate; without adopting some form of T22, a fourth bypass
+  during this very finalization pass is plausible.
+- Live Proxmox state (4 created LXCs) and a manually-applied schema change exist
+  outside of what the workflow's own audit trail records — reconciling them (T19/T20)
+  is an operational decision that has not yet been made and could silently diverge
+  from `runtime_instances`/`database/init.sql` if left unaddressed.
+- The SSH-key ops blocker (T21) is confirmed still open in this pass; "Validate
+  working runtime" cannot be fully satisfied against the real PVE host until it is
+  resolved, independent of any code correctness question.

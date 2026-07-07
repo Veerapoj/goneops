@@ -1,10 +1,40 @@
 const { query } = require('../lib/db');
 const { writeAuditLog } = require('../lib/audit');
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
 
 const PVE_HOST = process.env.PVE_SSH_HOST || '192.168.1.165';
 const PVE_SSH_USER = process.env.PVE_SSH_USER || 'root';
 const PVE_SSH_KEY = process.env.PVE_SSH_KEY || '/home/veenews/.ssh/id_ed25519_pve';
 const PVE_TEMPLATE = process.env.GONEOPS_LXC_TEMPLATE || 'local:vztmpl/ubuntu-24.04-standard_24.04-2_amd64.tar.zst';
+
+let _resolvedSshKey = null;
+let _secretTempKeyPath = null;
+
+async function resolvePveSshKey(jobId) {
+  if (_resolvedSshKey) return _resolvedSshKey;
+  const secrets = await query("SELECT key, value FROM secrets WHERE key = 'PVE_SSH_PRIVATE_KEY' AND environment_id = 1 LIMIT 1").catch(() => ({ rows: [] }));
+  const secretKey = secrets.rows[0]?.value;
+  if (secretKey && secretKey.length > 50) {
+    const dir = path.join(os.tmpdir(), 'goneops-secrets');
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    const tmpPath = path.join(dir, `pve_key_${jobId || process.pid}`);
+    fs.writeFileSync(tmpPath, secretKey, { mode: 0o600 });
+    _secretTempKeyPath = tmpPath;
+    _resolvedSshKey = tmpPath;
+    return tmpPath;
+  }
+  if (fs.existsSync(PVE_SSH_KEY) && fs.statSync(PVE_SSH_KEY).isFile()) {
+    _resolvedSshKey = PVE_SSH_KEY;
+    return PVE_SSH_KEY;
+  }
+  throw new Error('PVE SSH key not available. Add PVE_SSH_PRIVATE_KEY secret or mount key file.');
+}
+
+function cleanupTempKey() {
+  if (_secretTempKeyPath) { try { fs.unlinkSync(_secretTempKeyPath); } catch (_) {} _secretTempKeyPath = null; _resolvedSshKey = null; }
+}
 
 const PROVEN_LXC_CONFIG_EXTRA = [
   'lxc.cgroup2.devices.allow: c:*:* rwm',
@@ -26,21 +56,14 @@ function safeImage(image) {
 }
 
 function assertPveSshKeyUsable() {
-  const fs = require('fs');
-  let stat;
-  try {
-    stat = fs.statSync(PVE_SSH_KEY);
-  } catch {
-    throw new Error(`PVE_SSH_KEY not found at ${PVE_SSH_KEY}: provision the authorized PVE SSH private key file at this path`);
-  }
-  if (!stat.isFile()) {
-    throw new Error(`PVE_SSH_KEY at ${PVE_SSH_KEY} is not a regular file (found ${stat.isDirectory() ? 'a directory' : 'other'}): provision the authorized PVE SSH private key file at this path`);
-  }
+  if (_resolvedSshKey || (fs.existsSync(PVE_SSH_KEY) && fs.statSync(PVE_SSH_KEY).isFile())) return;
+  throw new Error(`PVE SSH key not accessible at ${PVE_SSH_KEY}. Call resolvePveSshKey() first.`);
 }
 
 async function getNextVmid() {
   const { execSync } = require('child_process');
-  const ssh = `ssh -i ${PVE_SSH_KEY} -o StrictHostKeyChecking=no ${PVE_SSH_USER}@${PVE_HOST}`;
+  const keyPath = _resolvedSshKey || PVE_SSH_KEY;
+  const ssh = `ssh -i ${keyPath} -o StrictHostKeyChecking=no ${PVE_SSH_USER}@${PVE_HOST}`;
   const result = execSync(`${ssh} 'pvesh get /cluster/nextid'`, { timeout: 10000, shell: true }).toString().trim();
   const vmid = parseInt(result);
   if (!vmid || vmid < 100) throw new Error(`Invalid VMID from Proxmox: ${result}`);
@@ -49,7 +72,8 @@ async function getNextVmid() {
 
 async function getLxcDhcpIp(vmid) {
   const { execSync } = require('child_process');
-  const ssh = `ssh -i ${PVE_SSH_KEY} -o StrictHostKeyChecking=no ${PVE_SSH_USER}@${PVE_HOST}`;
+  const keyPath = _resolvedSshKey || PVE_SSH_KEY;
+  const ssh = `ssh -i ${keyPath} -o StrictHostKeyChecking=no ${PVE_SSH_USER}@${PVE_HOST}`;
   try {
     const raw = execSync(`${ssh} "pct exec ${vmid} -- hostname -I 2>/dev/null"`, { timeout: 10000, shell: true }).toString().trim();
     const ip = raw.split(/\s+/)[0];
@@ -106,12 +130,14 @@ async function deploySandbox(projectId, environmentId) {
   setImmediate(async () => {
     let createdVmid = null;
     try {
+      await resolvePveSshKey(jobId);
       assertPveSshKeyUsable();
 
       const { execSync } = require('child_process');
       const exec = (cmd) => require('child_process').execSync(cmd, { timeout: 300000, shell: true }).toString().trim();
 
-      const ssh = `ssh -i ${PVE_SSH_KEY} -o StrictHostKeyChecking=no ${PVE_SSH_USER}@${PVE_HOST}`;
+      const sshKey = _resolvedSshKey || PVE_SSH_KEY;
+      const ssh = `ssh -i ${sshKey} -o StrictHostKeyChecking=no ${PVE_SSH_USER}@${PVE_HOST}`;
       const pct = (vmid, cmd) => exec(`${ssh} 'pct exec ${vmid} -- bash -c "${cmd}"'`);
 
       const project = (await query('SELECT name FROM projects WHERE id=$1', [projectId])).rows[0];
@@ -119,7 +145,7 @@ async function deploySandbox(projectId, environmentId) {
       const safeName = `${project.name}-${env.name}`.replace(/[^a-z0-9-]/gi, '-').toLowerCase();
 
       await updateJobStep(jobId, 'Finding runtime', 'running');
-      let vmid, lxcName, createdVmid = null;
+      let vmid, lxcName;
       const existing = await findExistingRuntime(projectId, environmentId);
 
       if (existing) {
@@ -186,12 +212,11 @@ async function deploySandbox(projectId, environmentId) {
       await updateJobStep(jobId, 'Checking health', 'running');
       await new Promise((r) => setTimeout(r, 15000));
       let healthy = false;
-      for (let attempt = 0; attempt < 10 && !healthy; attempt++) {
+      for (let attempt = 0; attempt < 5 && !healthy; attempt++) {
         if (attempt > 0) await new Promise((r) => setTimeout(r, 5000));
         try {
-          const running = pct(vmid, 'docker ps -q 2>/dev/null | wc -l');
-          const count = parseInt(running.trim()) || 0;
-          if (count >= services.length) {
+          const httpCode = pct(vmid, `curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1:${webPort}`);
+          if (httpCode.trim() === '200') {
             healthy = true;
           }
         } catch (_) {}
@@ -226,7 +251,8 @@ async function deploySandbox(projectId, environmentId) {
       if (createdVmid) {
         try {
           const { execSync } = require('child_process');
-          const sshClean = `ssh -i ${PVE_SSH_KEY} -o StrictHostKeyChecking=no ${PVE_SSH_USER}@${PVE_HOST}`;
+          const keyPath = _resolvedSshKey || PVE_SSH_KEY;
+          const sshClean = `ssh -i ${keyPath} -o StrictHostKeyChecking=no ${PVE_SSH_USER}@${PVE_HOST}`;
           execSync(`${sshClean} 'pct stop ${createdVmid} 2>/dev/null; pct destroy ${createdVmid} --force 2>/dev/null'`, { timeout: 30000, shell: true });
         } catch (cleanupErr) {
           console.error(`[runtimeOrchestrator] LXC ${createdVmid} cleanup failed: ${cleanupErr.message}`);
@@ -237,7 +263,9 @@ async function deploySandbox(projectId, environmentId) {
         "INSERT INTO runtime_instances (project_id, environment_id, vmid, status) VALUES ($1,$2,$3,'failed') ON CONFLICT (project_id,environment_id) DO UPDATE SET status='failed', vmid=$3",
         [projectId, environmentId, createdVmid || 0]
       );
+      cleanupTempKey();
     }
+    cleanupTempKey();
   });
 
   return { job_id: jobId, status: 'pending', message: 'Sandbox deployment started' };

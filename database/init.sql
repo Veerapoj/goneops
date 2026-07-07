@@ -75,6 +75,7 @@ CREATE TABLE IF NOT EXISTS deployments (
     version VARCHAR(50) NOT NULL DEFAULT 'v1.0.0',
     status VARCHAR(50) NOT NULL DEFAULT 'pending', -- e.g., 'pending', 'running', 'success', 'failed'
     logs TEXT,
+    image VARCHAR(500),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 

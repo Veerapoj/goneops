@@ -315,6 +315,8 @@ CREATE TABLE IF NOT EXISTS asset_relationships (
 CREATE INDEX IF NOT EXISTS idx_asset_rel_source ON asset_relationships(source_type, source_id);
 CREATE INDEX IF NOT EXISTS idx_asset_rel_target ON asset_relationships(target_type, target_id);
 
+ALTER TABLE deployments ADD COLUMN IF NOT EXISTS image VARCHAR(500);
+
 CREATE TABLE IF NOT EXISTS runtime_instances (
     id SERIAL PRIMARY KEY,
     project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
