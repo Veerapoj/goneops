@@ -9,3 +9,4 @@ test-results/
 frontend/dist/
 .env
 *.log
+backend/backups/
