@@ -35,6 +35,7 @@ async function getDashboardStats() {
   const hosts = await query("SELECT COUNT(*)::int AS count FROM hosts WHERE data_source = 'discovered'");
   const vms = await query("SELECT COUNT(*)::int AS count FROM vms WHERE data_source = 'discovered'");
   const containers = await query("SELECT COUNT(*)::int AS count FROM containers WHERE data_source = 'discovered'");
+  const runningRuntime = await query("SELECT COUNT(*)::int AS count FROM runtime_instances WHERE status = 'running'");
   const applications = await query("SELECT COUNT(*)::int AS count FROM applications WHERE data_source = 'discovered'");
   const providers = await query("SELECT COUNT(*)::int AS count FROM providers WHERE data_source = 'discovered'");
   const connectedProviders = await query("SELECT COUNT(*)::int AS count FROM providers WHERE status = 'connected' AND data_source = 'discovered'");
@@ -45,7 +46,7 @@ async function getDashboardStats() {
   return {
     hosts: hosts.rows[0]?.count || 0,
     vms: vms.rows[0]?.count || 0,
-    containers: containers.rows[0]?.count || 0,
+    containers: (containers.rows[0]?.count || 0) + (runningRuntime.rows[0]?.count || 0),
     applications: applications.rows[0]?.count || 0,
     providers: providers.rows[0]?.count || 0,
     connected_providers: connectedProviders.rows[0]?.count || 0,
@@ -306,6 +307,7 @@ async function getPlatformOverview() {
   const hosts = await query("SELECT COUNT(*)::int AS count FROM hosts WHERE data_source = 'discovered'");
   const vms = await query("SELECT COUNT(*)::int AS count FROM vms WHERE data_source = 'discovered'");
   const containers = await query("SELECT COUNT(*)::int AS count FROM containers WHERE data_source = 'discovered'");
+  const runtimeLxcs = await query("SELECT COUNT(*)::int AS count FROM runtime_instances WHERE status = 'running'");
   const applications = await query("SELECT COUNT(*)::int AS count FROM applications WHERE data_source = 'discovered'");
   const lastSync = await query(`
     SELECT GREATEST(
@@ -320,7 +322,7 @@ async function getPlatformOverview() {
     providers: providers.rows[0]?.count || 0,
     hosts: hosts.rows[0]?.count || 0,
     vms: vms.rows[0]?.count || 0,
-    containers: containers.rows[0]?.count || 0,
+    containers: (containers.rows[0]?.count || 0) + (runtimeLxcs.rows[0]?.count || 0),
     applications: applications.rows[0]?.count || 0,
     last_sync: lastSync.rows[0]?.last_sync || null,
   };
